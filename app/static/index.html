@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Form Finder</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <aside id="kb">
+    <h1>Form Finder</h1>
+    <section>
+      <h2>Add a form</h2>
+      <form id="add-url">
+        <input name="url" type="url" placeholder="Google Form or web form link" required>
+        <button>Add link</button>
+      </form>
+      <label class="upload">
+        <input id="add-file" type="file" accept=".pdf,.docx" hidden>
+        <span>Upload PDF / Word</span>
+      </label>
+      <p id="kb-status" class="status"></p>
+    </section>
+    <section>
+      <h2>Knowledge base</h2>
+      <ul id="forms"></ul>
+    </section>
+  </aside>
+
+  <main>
+    <div id="log">
+      <div class="msg bot">Tell me what you need, e.g. <em>"I need to file a leave for next Friday"</em>.
+        I'll find the right form, ask you a few questions at a time, and fill it in.</div>
+    </div>
+    <form id="composer">
+      <textarea name="message" rows="3" placeholder="Describe your request…" required></textarea>
+      <button>Send</button>
+    </form>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
