@@ -41,8 +41,7 @@ async def ingest_url(url: str) -> FormSchema:
     final_url = str(resp.url)
     if "accounts.google.com" in final_url:
         raise IngestError(
-            "That form requires Google sign-in. Sign-in support is on the roadmap; "
-            "public forms work today."
+            "That form requires Google sign-in. Sign-in support is on the roadmap; public forms work today."
         )
     if resp.status_code >= 400:
         raise IngestError(f"That link returned HTTP {resp.status_code}.")

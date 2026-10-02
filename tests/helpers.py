@@ -34,26 +34,41 @@ def make_pdf(fields: list[str], checkbox: str | None = None) -> bytes:
         acro_fields.append(ref)
 
     for i, name in enumerate(fields):
-        add(DictionaryObject({
-            NameObject("/Type"): NameObject("/Annot"),
-            NameObject("/Subtype"): NameObject("/Widget"),
-            NameObject("/FT"): NameObject("/Tx"),
-            NameObject("/T"): TextStringObject(name),
-            NameObject("/Rect"): ArrayObject([NumberObject(50), NumberObject(700 - i * 40),
-                                              NumberObject(300), NumberObject(720 - i * 40)]),
-            NameObject("/Ff"): NumberObject(2 if i == 0 else 0),  # first field required
-        }))
+        add(
+            DictionaryObject(
+                {
+                    NameObject("/Type"): NameObject("/Annot"),
+                    NameObject("/Subtype"): NameObject("/Widget"),
+                    NameObject("/FT"): NameObject("/Tx"),
+                    NameObject("/T"): TextStringObject(name),
+                    NameObject("/Rect"): ArrayObject(
+                        [NumberObject(50), NumberObject(700 - i * 40), NumberObject(300), NumberObject(720 - i * 40)]
+                    ),
+                    NameObject("/Ff"): NumberObject(2 if i == 0 else 0),  # first field required
+                }
+            )
+        )
     if checkbox:
-        add(DictionaryObject({
-            NameObject("/Type"): NameObject("/Annot"),
-            NameObject("/Subtype"): NameObject("/Widget"),
-            NameObject("/FT"): NameObject("/Btn"),
-            NameObject("/T"): TextStringObject(checkbox),
-            NameObject("/Rect"): ArrayObject([NumberObject(50), NumberObject(100),
-                                              NumberObject(70), NumberObject(120)]),
-            NameObject("/AP"): DictionaryObject({NameObject("/N"): DictionaryObject({
-                NameObject("/Yes"): DictionaryObject(), NameObject("/Off"): DictionaryObject()})}),
-        }))
+        add(
+            DictionaryObject(
+                {
+                    NameObject("/Type"): NameObject("/Annot"),
+                    NameObject("/Subtype"): NameObject("/Widget"),
+                    NameObject("/FT"): NameObject("/Btn"),
+                    NameObject("/T"): TextStringObject(checkbox),
+                    NameObject("/Rect"): ArrayObject(
+                        [NumberObject(50), NumberObject(100), NumberObject(70), NumberObject(120)]
+                    ),
+                    NameObject("/AP"): DictionaryObject(
+                        {
+                            NameObject("/N"): DictionaryObject(
+                                {NameObject("/Yes"): DictionaryObject(), NameObject("/Off"): DictionaryObject()}
+                            )
+                        }
+                    ),
+                }
+            )
+        )
     page[NameObject("/Annots")] = annots
     w._root_object[NameObject("/AcroForm")] = DictionaryObject({NameObject("/Fields"): acro_fields})
     out = BytesIO()

@@ -29,9 +29,7 @@ def pick_form(soup: BeautifulSoup) -> Tag:
 
 def hidden_inputs(form: Tag) -> dict[str, str]:
     return {
-        el["name"]: el.get("value", "")
-        for el in form.find_all("input", attrs={"type": "hidden"})
-        if el.get("name")
+        el["name"]: el.get("value", "") for el in form.find_all("input", attrs={"type": "hidden"}) if el.get("name")
     }
 
 

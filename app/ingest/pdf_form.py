@@ -38,15 +38,19 @@ def parse_pdf(data: bytes, filename: str, form_id: str) -> FormSchema:
         if ftype == "/Btn":
             states = [str(s) for s in f.get("/_States_", []) if str(s) != "/Off"]
             if flags & _RADIO_FLAG:
-                fields.append(FormField(id=name, label=label, type="choice", required=required,
-                                        options=[s.lstrip("/") for s in states]))
+                fields.append(
+                    FormField(
+                        id=name, label=label, type="choice", required=required, options=[s.lstrip("/") for s in states]
+                    )
+                )
             else:
                 on_values[name] = states[0] if states else "/Yes"
                 fields.append(FormField(id=name, label=label, type="boolean", required=required))
         elif ftype == "/Ch":
             opts = [o[-1] if isinstance(o, list) else o for o in f.get("/Opt", [])]
-            fields.append(FormField(id=name, label=label, type="dropdown", required=required,
-                                    options=[str(o) for o in opts]))
+            fields.append(
+                FormField(id=name, label=label, type="dropdown", required=required, options=[str(o) for o in opts])
+            )
         else:
             fields.append(FormField(id=name, label=label, type="text", required=required))
 

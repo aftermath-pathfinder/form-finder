@@ -97,7 +97,7 @@ async def extract_answers(
         "- Dates as YYYY-MM-DD (resolve 'next Friday' etc. using today). Times as HH:MM (24h).\n"
         "- For fields with options, answer with one of the options exactly; for checkbox fields, a list of options.\n"
         "- boolean fields: true or false.\n"
-        "- If the user says to skip or leave something blank, list its id in \"skipped\".\n"
+        '- If the user says to skip or leave something blank, list its id in "skipped".\n'
         'Return {"answers": {<field id>: <value>}, "skipped": [<field id>, ...]}.'
     )
     user = json.dumps(

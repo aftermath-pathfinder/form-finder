@@ -16,10 +16,14 @@ def handler(system: str, user: dict) -> dict:
     if "extract form answers" in system:
         msg, ids = user["message"].lower(), {f["id"] for f in user["fields"]}
         known = {
-            "Start date": ("friday", "2026-10-09"), "End date": ("friday", "2026-10-09"),
-            "Full name": ("ana", "Ana Cruz"), "Employee ID": ("e-42", "E-42"),
-            "Department": ("finance", "Finance"), "Leave type": ("vacation", "Vacation"),
-            "Reason": ("trip", "Family trip"), "Manager": ("bea", "Bea Lim"),
+            "Start date": ("friday", "2026-10-09"),
+            "End date": ("friday", "2026-10-09"),
+            "Full name": ("ana", "Ana Cruz"),
+            "Employee ID": ("e-42", "E-42"),
+            "Department": ("finance", "Finance"),
+            "Leave type": ("vacation", "Vacation"),
+            "Reason": ("trip", "Family trip"),
+            "Manager": ("bea", "Bea Lim"),
         }
         return {"answers": {k: v for k, (kw, v) in known.items() if k in ids and kw in msg}, "skipped": []}
     return {"description": "Requesting leave / time off", "questions": {}}
@@ -40,8 +44,9 @@ def test_full_flow(tmp_path):
     asked = [q["id"] for q in turn["questions"]]
     assert "Start date" not in asked and len(asked) == 6  # 6 remaining -> one batch
 
-    turn = client.post(f"/api/chat/{turn['session_id']}",
-                       json={"message": "Ana, E-42, finance, vacation, family trip, manager is Bea"}).json()
+    turn = client.post(
+        f"/api/chat/{turn['session_id']}", json={"message": "Ana, E-42, finance, vacation, family trip, manager is Bea"}
+    ).json()
     assert turn["stage"] == "review" and turn["missing_required"] == []
     assert turn["action"] == "download"
 

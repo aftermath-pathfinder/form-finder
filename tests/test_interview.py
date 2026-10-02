@@ -4,14 +4,19 @@ from app.interview import Session, batch_size, normalize
 from app.models import FormField, FormSchema, SourceKind
 
 
-@pytest.mark.parametrize("remaining,expected", [(1, 1), (3, 3), (4, 4), (6, 6), (7, 4), (8, 4), (12, 6), (13, 5), (20, 5)])
+@pytest.mark.parametrize(
+    "remaining,expected", [(1, 1), (3, 3), (4, 4), (6, 6), (7, 4), (8, 4), (12, 6), (13, 5), (20, 5)]
+)
 def test_batch_size(remaining, expected):
     assert batch_size(remaining) == expected
 
 
 def make_form(n: int, required: bool = True) -> FormSchema:
     return FormSchema(
-        id="f", title="T", kind=SourceKind.PDF, source="t.pdf",
+        id="f",
+        title="T",
+        kind=SourceKind.PDF,
+        source="t.pdf",
         fields=[FormField(id=f"q{i}", label=f"Q{i}", required=required) for i in range(n)],
     )
 

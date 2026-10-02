@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class SourceKind(str, Enum):
+class SourceKind(StrEnum):
     GOOGLE_FORM = "google_form"
     HTML_FORM = "html_form"
     APPS_SCRIPT = "apps_script"
@@ -15,8 +15,17 @@ class SourceKind(str, Enum):
 ONLINE_KINDS = {SourceKind.GOOGLE_FORM, SourceKind.HTML_FORM, SourceKind.APPS_SCRIPT}
 
 FieldType = Literal[
-    "text", "paragraph", "email", "number", "date", "time",
-    "choice", "dropdown", "checkbox", "boolean", "scale",
+    "text",
+    "paragraph",
+    "email",
+    "number",
+    "date",
+    "time",
+    "choice",
+    "dropdown",
+    "checkbox",
+    "boolean",
+    "scale",
 ]
 
 

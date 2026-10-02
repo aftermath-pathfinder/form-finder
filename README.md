@@ -72,12 +72,13 @@ app/
   llm/               swappable AI providers
   static/            the web page (plain HTML/JS, no build step)
 tests/               run with: pytest
+docs/                architecture, standards, decisions, roadmap
 ```
 
-## Roadmap
+## Docs
 
-- [ ] Google Apps Script web apps (need a real browser: Playwright)
-- [ ] Forms that require Google sign-in
-- [ ] Scanned/flat PDFs (OCR + place text by position)
-- [ ] Word forms without `{{ }}` markers (detect `Name: ______` blanks)
-- [ ] Google Form grids and file-upload questions
+- [docs/architecture.md](docs/architecture.md): how a request flows through the app
+- [docs/coding-standards.md](docs/coding-standards.md): rules for code and reviews
+- [docs/decisions/](docs/decisions/): why this stack (FastAPI, Pydantic AI proposal, frontend)
+- [docs/agents.md](docs/agents.md): AI coding agent setup (`AGENTS.md`, `.claude/agents/`)
+- [docs/roadmap.md](docs/roadmap.md): what's next

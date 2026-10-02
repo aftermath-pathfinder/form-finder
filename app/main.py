@@ -88,7 +88,7 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
         try:
             form = await ingest_url(body.url.strip())
         except IngestError as e:
-            raise HTTPException(422, str(e))
+            raise HTTPException(422, str(e)) from e
         form = await ai.enrich_form(request.app.state.llm, form)
         kb(request).save(form)
         return form.summary()
@@ -101,7 +101,7 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
         try:
             form = ingest_file(file.filename or "upload", data)
         except IngestError as e:
-            raise HTTPException(422, str(e))
+            raise HTTPException(422, str(e)) from e
         form = await ai.enrich_form(request.app.state.llm, form)
         kb(request).save(form, template=data)
         return form.summary()
@@ -121,7 +121,7 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
         try:
             form_id, reason = await ai.match_form(llm, body.message, forms)
         except LLMError as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from e
         if form_id is None:
             return {"stage": "no_match", "reply": reason or "I couldn't find a form for that request."}
 
@@ -142,7 +142,7 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
         try:
             answers, skipped = await ai.extract_answers(request.app.state.llm, s.form, s.unanswered(), body.message)
         except LLMError as e:
-            raise HTTPException(502, str(e))
+            raise HTTPException(502, str(e)) from e
         rejected = s.apply(answers, skipped)
         reply = "Got it."
         if rejected:
@@ -176,7 +176,7 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
             try:
                 msg = await submit_online(s.form, s.answers)
             except SubmitError as e:
-                raise HTTPException(502, str(e))
+                raise HTTPException(502, str(e)) from e
             request.app.state.sessions.drop(s.id)
             return {"stage": "done", "reply": msg}
 
@@ -199,4 +199,3 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
         return FileResponse(STATIC / "index.html")
 
     return app
-

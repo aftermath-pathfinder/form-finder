@@ -21,8 +21,12 @@ def google_form_html() -> str:
         [5, "Notes", None, 1, [[444, None, 0]]],
         [6, "Section title", None, 6, None],
     ]
-    data = [None, ["Fill this in to request leave", items, None, None, None, None, None, None, "Leave Request"],
-            "/forms", "Leave Request (file)"]
+    data = [
+        None,
+        ["Fill this in to request leave", items, None, None, None, None, None, None, "Leave Request"],
+        "/forms",
+        "Leave Request (file)",
+    ]
     return f"<html><script>var FB_PUBLIC_LOAD_DATA_ = {json.dumps(data)};</script></html>"
 
 
@@ -41,8 +45,10 @@ def test_google_form_parse_and_payload():
 
 
 def test_form_response_url_variants():
-    assert form_response_url("https://docs.google.com/forms/d/e/X/viewform") == \
-        "https://docs.google.com/forms/d/e/X/formResponse"
+    assert (
+        form_response_url("https://docs.google.com/forms/d/e/X/viewform")
+        == "https://docs.google.com/forms/d/e/X/formResponse"
+    )
 
 
 def test_html_form_parse_and_payload():
@@ -51,7 +57,9 @@ def test_html_form_parse_and_payload():
         <input type="hidden" name="csrf" value="t0k">
         <label for="n">Your name</label><input id="n" name="name" required>
         <input name="email" type="email" placeholder="Work email">
-        <select name="dept"><option value="">--</option><option value="it">IT</option><option value="hr">HR</option></select>
+        <select name="dept">
+          <option value="">--</option><option value="it">IT</option><option value="hr">HR</option>
+        </select>
         <fieldset><legend>Urgency</legend>
           <label><input type="radio" name="urg" value="1"> Low</label>
           <label><input type="radio" name="urg" value="3"> High</label>
