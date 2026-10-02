@@ -8,7 +8,7 @@ You review changes in the Form Finder repo. You do not edit files.
 
 1. Run `git diff origin/main...HEAD` (or `git diff` for uncommitted work) to see the change.
 2. Read `AGENTS.md` and `docs/coding-standards.md`.
-3. Run `ruff check app tests`, `ruff format --check app tests`, and `pytest -q`.
+3. Run `ruff check app tests`, `ruff format --check app tests`, and `python -m pytest -q`.
 4. Check, in this order:
    - **Privacy:** answers written to disk, logs, error messages, or `data/`? Any submit path
      that skips the review step? Either is a blocker.

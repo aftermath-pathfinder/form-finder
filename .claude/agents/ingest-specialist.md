@@ -19,4 +19,4 @@ A complete source needs:
 5. Update the "Supported sources" table in `docs/architecture.md` and `docs/roadmap.md`.
 
 Rules: no AI calls inside `ingest/`; never store user answers; run
-`ruff check app tests && pytest -q` before finishing.
+`ruff check app tests && python -m pytest -q` before finishing.

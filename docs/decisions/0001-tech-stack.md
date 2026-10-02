@@ -65,10 +65,10 @@ Forms. Playwright over Selenium: auto-waiting, iframe handling, saved login stat
 | Tool | Use |
 |---|---|
 | `ruff` | lint + format (adopted) |
-| `pytest` | tests (adopted) |
+| `python -m pytest` | tests (adopted) |
 | `uv` | faster installs + lockfile (adopt with the Pydantic AI migration) |
 | `pyright` | type checking (adopt once code settles) |
-| `pre-commit` | run ruff/pytest before each commit (optional) |
+| `pre-commit` | run ruff/python -m pytest before each commit (optional) |
 
 ## Consequences
 

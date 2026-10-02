@@ -1,6 +1,6 @@
 # Coding standards
 
-Enforced by tools where possible (`ruff`, `pytest`). The rest is checked in review.
+Enforced by tools where possible (`ruff`, `python -m pytest`). The rest is checked in review.
 
 ## 1. Python
 
@@ -48,7 +48,7 @@ Enforced by tools where possible (`ruff`, `pytest`). The rest is checked in revi
 
 ## 5. Tests
 
-- `pytest`, offline. **No real network, no real AI**: use `FakeLLM` and build fixtures in code
+- `python -m pytest`, offline. **No real network, no real AI**: use `FakeLLM` and build fixtures in code
   (`tests/helpers.py` makes PDFs/DOCX on the fly).
 - Every ingester: one **parse** test and one **fill or submit-payload** test.
 - Bug fix → add the test that would have caught it.
@@ -63,6 +63,6 @@ Enforced by tools where possible (`ruff`, `pytest`). The rest is checked in revi
 ## 7. Git and PRs
 
 - Branch per change. Commit subject: imperative, ≤ 72 chars ("Add Apps Script ingester").
-- Before pushing: `ruff check app tests && ruff format --check app tests && pytest`.
+- Before pushing: `ruff check app tests && ruff format --check app tests && python -m pytest`.
 - PR description: what changed, why, how you tested it. Screenshots for UI changes.
 - Update `docs/` in the same PR when behaviour or architecture changes.

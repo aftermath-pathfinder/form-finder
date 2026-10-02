@@ -11,7 +11,7 @@ Run:
 ```bash
 ruff check app tests
 ruff format --check app tests
-pytest -q
+python -m pytest -q
 ```
 
 If everything passes, reply with one line: the counts.

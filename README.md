@@ -71,7 +71,7 @@ app/
   submit.py          submit Google Forms / HTML forms
   llm/               swappable AI providers
   static/            the web page (plain HTML/JS, no build step)
-tests/               run with: pytest
+tests/               run with: python -m pytest
 docs/                architecture, standards, decisions, roadmap
 ```
 

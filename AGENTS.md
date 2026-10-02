@@ -14,7 +14,7 @@ form or returns a filled PDF/DOCX. See `docs/architecture.md`.
 ```bash
 pip install -r requirements.txt               # install
 uvicorn app.main:create_app --factory --reload  # run on http://localhost:8000
-pytest                                        # tests (offline, no API key needed)
+python -m pytest                              # tests (offline, no API key needed)
 ruff check app tests && ruff format app tests # lint + format; must pass before commit
 ```
 
@@ -46,4 +46,4 @@ Full standards: `docs/coding-standards.md`. Tech decisions and why: `docs/decisi
 ## Git
 
 - Small commits, imperative subject ≤ 72 chars ("Add Apps Script ingester").
-- `pytest` and `ruff check` green before every push.
+- `python -m pytest` and `ruff check` green before every push.
