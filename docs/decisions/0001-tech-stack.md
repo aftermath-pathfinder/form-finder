@@ -1,6 +1,6 @@
 # 0001. Tech stack
 
-- Status: **proposed** (needs owner sign-off before the Pydantic AI migration)
+- Status: **accepted** (Pydantic AI migration done 2026-10-02)
 - Date: 2026-10-02
 
 ## Context
@@ -27,24 +27,26 @@ Constraints:
 | Flask | ❌ Sync-first, no built-in validation. Strictly less than FastAPI here. |
 | Node / Next.js full-stack | ❌ Loses Python's PDF/DOCX/Playwright ecosystem. |
 
-### AI layer: **move to Pydantic AI** (proposed)
+### AI layer: **Pydantic AI** (accepted, migrated)
 
 | Option | Verdict |
 |---|---|
-| Hand-rolled (current `app/llm/`) | Works, ~80 lines. But we maintain JSON parsing, retries, and every provider ourselves. |
+| Hand-rolled (previous `app/llm/`) | Works, ~80 lines. But we maintain JSON parsing, retries, and every provider ourselves. |
 | **Pydantic AI** | ✅ Typed outputs: the model's reply is validated into a Pydantic model and **auto-retried** on bad output (replaces `parse_json`/`complete_json`). 20+ providers plus any OpenAI-compatible URL via `OpenAIProvider(base_url=...)`. `FallbackModel` can switch to a backup provider when the free tier is down. Ships test models, replacing our `FakeLLM`. Same team as Pydantic/FastAPI, so the style matches. |
 | LiteLLM | Good provider switch (100+ providers) but only that. No validation or retries. Could sit *under* Pydantic AI later if needed. |
 | LangChain / LangGraph | ❌ for now. LangGraph shines for multi-step, durable, branching agent workflows. Our flow is a simple loop with state already in `Session`. Revisit if the browser-driving agent becomes multi-step with checkpoints. |
 | CrewAI / multi-agent frameworks | ❌ We don't have multiple cooperating agents. |
 
-**Migration plan (small):** replace the body of `ai.py`'s three functions with three Pydantic AI
-`Agent`s (`output_type=MatchResult / Extraction / Enrichment`). Keep `LLMProvider` as a
-thin factory that builds the Pydantic AI model from `.env`, so switching providers stays
-config-only. Tests switch from `FakeLLM` to Pydantic AI's `FunctionModel`.
+**How it was done:** `ai.py` has three `Agent`s with typed outputs (`Enrichment`, `Match`,
+`Extraction`) using `PromptedOutput`. The match agent has an `output_validator` that makes the
+model retry if it names a form that isn't in the catalog. `app/llm.py` builds the model from `.env`
+(OpenAI-compatible URL, any Pydantic AI provider, optional `FallbackModel`). Tests use
+`FunctionModel`. Checked against a local OpenAI-compatible server: GLM-style `<think>` tags and
+```json fences in replies are handled.
 
-**Risk to check first:** GLM on NVIDIA may not support tool calling / JSON-schema mode
-reliably. Pydantic AI's *prompted* output mode (schema in the prompt, validated after) covers
-that; verify with a real key before migrating.
+**Still to verify with a real key:** prompted output sends `response_format: {"type": "json_object"}`.
+If NVIDIA's GLM rejects that parameter, set the model profile's `supports_json_object_output` to
+`False` in `app/llm.py`.
 
 ### Frontend: **keep plain HTML/JS now; React + Vite when the UI grows**
 

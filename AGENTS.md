@@ -26,7 +26,7 @@ ruff check app tests && ruff format app tests # lint + format; must pass before 
 | New form source (reader) | `app/ingest/<source>_form.py` + register in `app/ingest/__init__.py` |
 | Filling a file / submitting online | `app/fill.py` / `app/submit.py` |
 | Question batching, answer validation | `app/interview.py` |
-| New AI provider | `app/llm/` (implement `LLMProvider.complete`) |
+| AI provider / model setup | `app/llm.py` (usually just `.env`) |
 | HTTP routes | `app/main.py` only |
 | UI | `app/static/` (plain HTML/JS, no build step) |
 
@@ -35,7 +35,8 @@ ruff check app tests && ruff format app tests # lint + format; must pass before 
 - **Never persist or log the user's answers.** They live in `Session` (memory) and are dropped
   after submit. Only blank templates go to `data/`.
 - **Never submit without the review step.** `POST /api/chat/{id}/submit` is the user's approval.
-- **Tests never hit the network or a real AI.** Use `FakeLLM` from `tests/helpers.py`.
+- **Tests never hit the network or a real AI.** Use `fake_model()` from `tests/helpers.py`
+  (a Pydantic AI `FunctionModel`).
 - Messages in `IngestError` / `SubmitError` / `HTTPException` are shown to the user: plain
   English, say what to do next.
 - Every new ingester ships with a parse test and a fill-or-submit-payload test.

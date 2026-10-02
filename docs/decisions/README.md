@@ -26,4 +26,4 @@ What gets easier, what gets harder, when to revisit.
 
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-tech-stack.md) | Tech stack: FastAPI + Pydantic AI + plain JS (for now) | proposed |
+| [0001](0001-tech-stack.md) | Tech stack: FastAPI + Pydantic AI + plain JS (for now) | accepted |

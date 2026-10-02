@@ -3,23 +3,26 @@ from collections.abc import Callable
 from io import BytesIO
 
 from docx import Document
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pypdf import PdfWriter
 from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, TextStringObject
 
-from app.llm import LLMProvider
+Handler = Callable[[str, dict], dict]
 
 
-class FakeLLM(LLMProvider):
-    """Answers prompts with canned JSON. `handler(system, user_json) -> dict`."""
+def fake_model(handler: Handler) -> FunctionModel:
+    """A Pydantic AI model that answers with canned JSON: `handler(instructions, prompt_json) -> dict`.
 
-    def __init__(self, handler: Callable[[str, dict], dict]):
-        self.handler = handler
-        self.calls: list[tuple[str, dict]] = []
+    Tests never call a real AI. The handler sees the agent's instructions (to tell agents apart)
+    and the JSON prompt the app sent.
+    """
 
-    async def complete(self, messages, *, temperature=None):
-        system, user = messages[0]["content"], json.loads(messages[1]["content"])
-        self.calls.append((system, user))
-        return json.dumps(self.handler(system, user))
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        prompt = next(p.content for m in messages for p in m.parts if isinstance(p, UserPromptPart))
+        return ModelResponse(parts=[TextPart(json.dumps(handler(info.instructions or "", json.loads(prompt))))])
+
+    return FunctionModel(respond)
 
 
 def make_pdf(fields: list[str], checkbox: str | None = None) -> bytes:

@@ -39,8 +39,8 @@ Adding a form is separate: `ingest/` reads the source into a `FormSchema`, then
 | Module | Owns | Must not |
 |---|---|---|
 | `main.py` | HTTP routes, wiring | contain prompts or parsing |
-| `ai.py` | every prompt + reading AI replies | do HTTP or touch files |
-| `llm/` | talking to an AI provider | know about forms |
+| `ai.py` | every prompt, as Pydantic AI agents with typed outputs | do HTTP or touch files |
+| `llm.py` | building the AI model from settings | know about forms |
 | `ingest/` | source → `FormSchema` | call the AI |
 | `interview.py` | batching, validation, sessions | call the AI or HTTP |
 | `fill.py`, `submit.py` | output | ask questions |

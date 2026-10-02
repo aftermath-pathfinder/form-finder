@@ -6,6 +6,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from pydantic_ai.models import Model
 
 from . import ai
 from .config import get_settings
@@ -13,7 +14,7 @@ from .fill import fill_docx, fill_pdf
 from .ingest import IngestError, ingest_file, ingest_url
 from .interview import Session, SessionStore
 from .knowledge_base import KnowledgeBase
-from .llm import LLMError, LLMProvider, get_provider
+from .llm import build_model
 from .models import FormField, SourceKind
 from .submit import SubmitError, submit_online
 
@@ -54,10 +55,11 @@ def _review(s: Session) -> dict[str, Any]:
     }
 
 
-def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> FastAPI:
+def create_app(model: Model | str | None = None, data_dir: Path | None = None) -> FastAPI:
+    """`model` overrides the AI from settings (tests pass a Pydantic AI `FunctionModel`)."""
     settings = get_settings()
     app = FastAPI(title="Form Finder")
-    app.state.llm = llm or get_provider(settings)
+    app.state.model = model or build_model(settings)
     app.state.kb = KnowledgeBase(data_dir or settings.data_dir)
     app.state.sessions = SessionStore()
 
@@ -89,7 +91,7 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
             form = await ingest_url(body.url.strip())
         except IngestError as e:
             raise HTTPException(422, str(e)) from e
-        form = await ai.enrich_form(request.app.state.llm, form)
+        form = await ai.enrich_form(request.app.state.model, form)
         kb(request).save(form)
         return form.summary()
 
@@ -102,7 +104,7 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
             form = ingest_file(file.filename or "upload", data)
         except IngestError as e:
             raise HTTPException(422, str(e)) from e
-        form = await ai.enrich_form(request.app.state.llm, form)
+        form = await ai.enrich_form(request.app.state.model, form)
         kb(request).save(form, template=data)
         return form.summary()
 
@@ -116,11 +118,11 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
 
     @app.post("/api/chat")
     async def start(request: Request, body: MessageIn):
-        llm = request.app.state.llm
+        model = request.app.state.model
         forms = kb(request).all()
         try:
-            form_id, reason = await ai.match_form(llm, body.message, forms)
-        except LLMError as e:
+            form_id, reason = await ai.match_form(model, body.message, forms)
+        except ai.AIError as e:
             raise HTTPException(502, str(e)) from e
         if form_id is None:
             return {"stage": "no_match", "reply": reason or "I couldn't find a form for that request."}
@@ -128,9 +130,9 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
         s = request.app.state.sessions.add(Session(form=kb(request).get(form_id)))
         # Grab anything already in the request ("leave next Friday") so we don't ask for it.
         try:
-            answers, skipped = await ai.extract_answers(llm, s.form, s.form.fields, body.message)
+            answers, skipped = await ai.extract_answers(model, s.form, s.form.fields, body.message)
             s.apply(answers, skipped)
-        except LLMError:
+        except ai.AIError:
             pass
         reply = f"This looks like **{s.form.title}**. {reason}".strip()
         return _turn(s, reply)
@@ -140,8 +142,8 @@ def create_app(llm: LLMProvider | None = None, data_dir: Path | None = None) -> 
         s = session(request, sid)
         # Let the user answer anything still open, not just the current batch.
         try:
-            answers, skipped = await ai.extract_answers(request.app.state.llm, s.form, s.unanswered(), body.message)
-        except LLMError as e:
+            answers, skipped = await ai.extract_answers(request.app.state.model, s.form, s.unanswered(), body.message)
+        except ai.AIError as e:
             raise HTTPException(502, str(e)) from e
         rejected = s.apply(answers, skipped)
         reply = "Got it."

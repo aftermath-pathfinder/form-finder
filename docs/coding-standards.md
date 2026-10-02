@@ -22,7 +22,7 @@ Enforced by tools where possible (`ruff`, `python -m pytest`). The rest is check
 |---|---|---|
 | Can't read a form | `IngestError` | HTTP 422 |
 | Online submit failed | `SubmitError` | HTTP 502 |
-| AI unreachable / bad reply | `LLMError` | HTTP 502, or degrade (see below) |
+| AI unreachable / bad reply after retries | `ai.AIError` | HTTP 502, or degrade (see below) |
 
 - Error messages are **user-facing**: say what went wrong and what to do next.
   ✅ "This PDF has no fillable fields. Try a fillable version of the form."
@@ -33,11 +33,15 @@ Enforced by tools where possible (`ruff`, `python -m pytest`). The rest is check
 ## 3. AI / prompts
 
 - **All prompts live in `app/ai.py`.** Nowhere else builds messages.
-- Ask for **JSON**, then **validate in code** (`interview.normalize`). Never trust the model's
-  value for a choice/date/number without checking it.
+- Each AI task is a Pydantic AI `Agent` with a typed `output_type` (a Pydantic model). Use
+  `PromptedOutput` so it works on providers without tool calling.
+- Shape problems the model can fix (unknown id, wrong format) → `output_validator` raising
+  `ModelRetry`, so the model gets another try.
+- Still **validate values in code** (`interview.normalize`). Never trust the model's value for a
+  choice/date/number without checking it.
 - Include "never invent values" in extraction prompts; pass today's date for relative dates.
-- Provider-specific code stays in `app/llm/`. The rest of the app only calls
-  `LLMProvider.complete` / `complete_json`.
+- Provider setup stays in `app/llm.py`. Functions in `ai.py` take the model as a parameter, so
+  tests can pass a fake one.
 
 ## 4. Privacy (non-negotiable)
 
@@ -48,7 +52,8 @@ Enforced by tools where possible (`ruff`, `python -m pytest`). The rest is check
 
 ## 5. Tests
 
-- `python -m pytest`, offline. **No real network, no real AI**: use `FakeLLM` and build fixtures in code
+- `python -m pytest`, offline. **No real network, no real AI**: use `fake_model()` (a Pydantic AI
+  `FunctionModel`) and build fixtures in code
   (`tests/helpers.py` makes PDFs/DOCX on the fly).
 - Every ingester: one **parse** test and one **fill or submit-payload** test.
 - Bug fix → add the test that would have caught it.

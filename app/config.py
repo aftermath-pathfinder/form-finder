@@ -11,8 +11,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://integrate.api.nvidia.com/v1"
     llm_api_key: str = ""
     llm_model: str = "z-ai/glm-5.3"
-    llm_timeout: float = 120.0
-    llm_temperature: float = 0.2
+    llm_fallback_models: str = ""
 
     # Form templates + their parsed schemas live here. Your answers never do.
     data_dir: Path = Path("data")

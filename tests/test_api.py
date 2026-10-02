@@ -4,7 +4,7 @@ from docx import Document
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from tests.helpers import FakeLLM, make_docx
+from tests.helpers import fake_model, make_docx
 
 FIELDS = ["Full name", "Employee ID", "Department", "Leave type", "Start date", "End date", "Reason", "Manager"]
 
@@ -30,7 +30,7 @@ def handler(system: str, user: dict) -> dict:
 
 
 def test_full_flow(tmp_path):
-    client = TestClient(create_app(llm=FakeLLM(handler), data_dir=tmp_path))
+    client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path))
     template = make_docx(*[f"{name}: {{{{{name}}}}}" for name in FIELDS])
     r = client.post("/api/forms/upload", files={"file": ("Leave Request.docx", template)})
     assert r.status_code == 200, r.text
@@ -60,7 +60,7 @@ def test_full_flow(tmp_path):
 
 
 def test_review_blocks_submit_until_required_filled(tmp_path):
-    client = TestClient(create_app(llm=FakeLLM(handler), data_dir=tmp_path))
+    client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path))
     client.post("/api/forms/upload", files={"file": ("Leave.docx", make_docx("{{Full name}} {{Manager}}"))})
     turn = client.post("/api/chat", json={"message": "leave please"}).json()
     sid = turn["session_id"]
@@ -75,7 +75,7 @@ def test_review_blocks_submit_until_required_filled(tmp_path):
 
 
 def test_bad_upload(tmp_path):
-    client = TestClient(create_app(llm=FakeLLM(handler), data_dir=tmp_path))
+    client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path))
     r = client.post("/api/forms/upload", files={"file": ("x.txt", b"hi")})
     assert r.status_code == 422
     r = client.post("/api/forms/upload", files={"file": ("x.docx", make_docx("no blanks here"))})

@@ -46,8 +46,8 @@ Your answers are kept in memory only for the current request and are gone after 
 
 ## Switching AI provider
 
-All AI calls go through one small interface (`app/llm/base.py`). Any OpenAI-compatible API works
-by editing `.env` only:
+AI calls use [Pydantic AI](https://pydantic.dev/docs/ai/), configured in one place (`app/llm.py`).
+Any OpenAI-compatible API works by editing `.env` only:
 
 | Provider | `LLM_BASE_URL` |
 |---|---|
@@ -56,20 +56,23 @@ by editing `.env` only:
 | OpenRouter | `https://openrouter.ai/api/v1` |
 | Ollama (local) | `http://localhost:11434/v1` |
 
-For a provider with a different API, add a class in `app/llm/` that implements
-`complete(messages) -> str`, register it in `app/llm/__init__.py`, and set `LLM_PROVIDER`.
+Other providers Pydantic AI supports (Anthropic, Gemini, Mistral, ...): set `LLM_PROVIDER` to its
+name (e.g. `anthropic`), `LLM_MODEL` to the model, its usual key variable (e.g. `ANTHROPIC_API_KEY`),
+and `pip install "pydantic-ai-slim[anthropic]"`.
+
+Backup when the free tier is busy: `LLM_FALLBACK_MODELS=openai:gpt-5.2` (comma-separated, tried in order).
 
 ## Project layout
 
 ```
 app/
   main.py            API routes + serves the web page
-  ai.py              every AI prompt: describe form, match request, extract answers
+  ai.py              every AI prompt, as Pydantic AI agents with typed outputs
   interview.py       4–6 question batching, answer validation, in-memory sessions
   ingest/            read forms: google_form, html_form, pdf_form, docx_form
   fill.py            write answers into PDF / DOCX
   submit.py          submit Google Forms / HTML forms
-  llm/               swappable AI providers
+  llm.py             builds the AI model from .env (provider switch + fallback)
   static/            the web page (plain HTML/JS, no build step)
 tests/               run with: python -m pytest
 docs/                architecture, standards, decisions, roadmap

@@ -3,7 +3,7 @@
 ## Now
 - [ ] Verify the real NVIDIA GLM model id and a full run with a real key
 - [ ] Test a live submit against a Google Form you own
-- [ ] Decide on [ADR 0001](decisions/0001-tech-stack.md); if accepted, migrate `ai.py` to Pydantic AI
+- [x] Migrate `ai.py` to Pydantic AI ([ADR 0001](decisions/0001-tech-stack.md))
 
 ## Next
 - [ ] Playwright: Google Apps Script web apps
