@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # `response_format` (replies are still parsed and validated as JSON either way).
     llm_json_mode: bool = True
 
+    # Set when hosting the app where others can reach it: every page then asks for this password.
+    app_password: str = ""
+
     # Form templates + their parsed schemas live here. Your answers never do.
     data_dir: Path = Path("data")
 

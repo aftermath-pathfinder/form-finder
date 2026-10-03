@@ -152,11 +152,23 @@ function renderReview(turn) {
   form.querySelector("[data-prefill]")?.addEventListener("click", async () => {
     const err = form.querySelector(".error");
     const win = window.open("", "_blank"); // open now, before awaits, so popup blockers allow it
+    if (win) win.opener = null; // the Google page must not be able to reach back into this tab
     try {
-      await json(`/api/chat/${sessionId}/answers`, "PUT", { answers: Object.fromEntries(new FormData(form)) });
-      const { url } = await json(`/api/chat/${sessionId}/prefill`, "GET");
+      const updated = await json(`/api/chat/${sessionId}/answers`, "PUT", {
+        answers: Object.fromEntries(new FormData(form)),
+      });
+      if (updated.rejected.length) {
+        win?.close();
+        box.remove();
+        renderReview({ ...updated, reply: "Some values didn't fit the form; please fix the highlighted fields." });
+        return;
+      }
+      const { url, reply } = await json(`/api/chat/${sessionId}/prefill`, "POST");
       if (win) win.location = url;
       else window.location = url;
+      form.querySelectorAll("input,select,textarea,button").forEach((el) => (el.disabled = true));
+      sessionId = null;
+      say(md(reply));
     } catch (ex) {
       win?.close();
       err.textContent = ex.message;

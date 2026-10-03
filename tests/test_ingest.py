@@ -55,8 +55,14 @@ def test_google_form_parse_and_payload():
     assert ("entry.333_year", "2026") in payload and ("entry.333_day", "09") in payload
     assert ("pageHistory", "0,1") in payload
 
-    url = google_prefill_url(form, {"entry.111": "Ana Cruz", "entry.222": "Sick"})
-    assert url == ("https://docs.google.com/forms/d/e/ABC/viewform?usp=pp_url&entry.111=Ana+Cruz&entry.222=Sick")
+    url = google_prefill_url(form, {"entry.111": "Ana Cruz", "entry.222": "Sick", "entry.333": "2026-10-09"})
+    assert url == (
+        "https://docs.google.com/forms/d/e/ABC/viewform?usp=pp_url"
+        "&entry.111=Ana+Cruz&entry.222=Sick&entry.333=2026-10-09"
+    )
+    # Checkbox answers repeat the entry key, one per ticked option.
+    form.fields[3].type = "checkbox"
+    assert "entry.444=A&entry.444=B" in google_prefill_url(form, {"entry.444": ["A", "B"]})
 
 
 def test_form_response_url_variants():

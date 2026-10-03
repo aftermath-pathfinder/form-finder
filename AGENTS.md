@@ -29,6 +29,7 @@ ruff check app tests && ruff format app tests # lint + format; must pass before 
 | Question batching, answer validation | `app/interview.py` |
 | AI provider / model setup | `app/llm.py` (usually just `.env`) |
 | HTTP routes | `app/main.py` only |
+| Password protection (hosting) | `app/auth.py` (on when `APP_PASSWORD` is set) |
 | UI | `app/static/` (plain HTML/JS, no build step) |
 
 ## Hard rules

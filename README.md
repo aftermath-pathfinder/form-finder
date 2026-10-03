@@ -41,6 +41,9 @@ Open http://localhost:8000.
    in automatically and not asked again.
 3. **Answer the batch** of questions in one message, numbered or free-form. Say "skip" for blanks.
 4. **Review**, edit anything, then **Approve**. Nothing is submitted until you approve.
+   For Google Forms you can instead click **Open prefilled in my browser**: the form opens in
+   your own browser with the answers filled in and you press Submit there. Handy for forms that
+   need your Google sign-in.
 
 Your answers are kept in memory only for the current request and are gone after submitting
 (or after an hour). Only blank form templates are saved, under `data/`.
@@ -61,6 +64,25 @@ is kept in `data/browser-profile/` (delete that folder to sign out). This only w
 Finder runs on your own computer, since the window opens there. Your form answers are never saved
 in that profile.
 
+## Hosting it (Docker)
+
+The `Dockerfile` includes the browser add-on. Set a password whenever others can reach the app:
+
+```bash
+docker build -t form-finder .
+docker run -p 8000:8000 -v form-finder-data:/data \
+  -e LLM_API_KEY=nvapi-... -e APP_PASSWORD=pick-a-password form-finder
+```
+
+- `APP_PASSWORD`: every page asks for it (browser login prompt, any username).
+  Leave it unset only when running on your own computer.
+- The `/data` volume keeps your knowledge base across restarts. Without it, forms are lost
+  whenever the container restarts (common on free hosting tiers).
+- "Sign in to Google" is turned off when hosted (it would open a window on the server). Use
+  **Open prefilled in my browser** for sign-in forms instead.
+- Works on any Docker host (Render, Railway, Fly.io, Hugging Face Spaces): point it at this repo
+  and set the environment variables in its dashboard.
+
 ## Switching AI provider
 
 AI calls use [Pydantic AI](https://pydantic.dev/docs/ai/), configured in one place (`app/llm.py`).
@@ -76,6 +98,8 @@ Any OpenAI-compatible API works by editing `.env` only:
 Other providers Pydantic AI supports (Anthropic, Gemini, Mistral, ...): set `LLM_PROVIDER` to its
 name (e.g. `anthropic`), `LLM_MODEL` to the model, its usual key variable (e.g. `ANTHROPIC_API_KEY`),
 and `pip install "pydantic-ai-slim[anthropic]"`.
+
+If the provider answers with a 400 error about `response_format`, set `LLM_JSON_MODE=false`.
 
 Backup when the free tier is busy: `LLM_FALLBACK_MODELS=openai:gpt-5.2` (comma-separated, tried in order).
 

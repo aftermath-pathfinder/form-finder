@@ -21,7 +21,11 @@
           ▼  (you click Approve)
  5. DELIVER    online form → submit.submit_online
                PDF / DOCX   → fill.fill_pdf / fill.fill_docx → download
+          or (Google Forms) "Open prefilled" → submit.google_prefill_url → you submit it yourself
 ```
+
+The session (with your answers) is dropped as soon as one of these delivery paths completes.
+With `APP_PASSWORD` set, `auth.PasswordMiddleware` guards every route.
 
 Adding a form is separate: `ingest/` reads the source into a `FormSchema`, then
 `ai.enrich_form` writes a one-line purpose (for matching) and a friendly question per field.

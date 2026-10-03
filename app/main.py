@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from pydantic_ai.models import Model
 
 from . import ai, browser
+from .auth import PasswordMiddleware
 from .config import get_settings
 from .fill import fill_docx, fill_pdf
 from .ingest import IngestError, ingest_file, ingest_url
@@ -56,10 +57,15 @@ def _review(s: Session) -> dict[str, Any]:
     }
 
 
-def create_app(model: Model | str | None = None, data_dir: Path | None = None) -> FastAPI:
-    """`model` overrides the AI from settings (tests pass a Pydantic AI `FunctionModel`)."""
+def create_app(model: Model | str | None = None, data_dir: Path | None = None, password: str | None = None) -> FastAPI:
+    """Arguments override settings: tests pass a Pydantic AI `FunctionModel`, a temp dir, a password."""
     settings = get_settings()
     app = FastAPI(title="Form Finder")
+    password = settings.app_password if password is None else password
+    if password:
+        app.add_middleware(PasswordMiddleware, password=password)
+    # A password means the app is hosted for others, so it must not open windows on the server.
+    app.state.hosted = bool(password)
     app.state.model = model or build_model(settings)
     app.state.kb = KnowledgeBase(data_dir or settings.data_dir)
     # Google login cookies for browser-only forms. Never holds answers.
@@ -127,7 +133,7 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None) -
     async def browser_login(request: Request):
         """Open a visible browser on this computer so the user can sign in to Google once."""
         host = request.client.host if request.client else ""
-        if host not in ("127.0.0.1", "::1", "localhost"):
+        if request.app.state.hosted or host not in ("127.0.0.1", "::1", "localhost"):
             raise HTTPException(400, "Sign-in opens a window on the computer running Form Finder, so use it there.")
         try:
             signed_in = await browser.login_interactive(request.app.state.browser_profile)
@@ -187,13 +193,18 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None) -
         rejected = s.apply({k: v for k, v in body.answers.items() if v not in (None, "", [])}, [])
         return {"session_id": s.id, "form": s.form.summary(), "stage": "review", "rejected": rejected, **_review(s)}
 
-    @app.get("/api/chat/{sid}/prefill")
+    @app.post("/api/chat/{sid}/prefill")
     def prefill(request: Request, sid: str):
-        """Google Forms only: a prefilled link the user opens and submits in their own browser."""
+        """Google Forms only: a prefilled link the user opens and submits in their own browser.
+
+        Handing over the link is this request's delivery, so the session (and its answers) ends here.
+        """
         s = session(request, sid)
-        if s.form.kind != SourceKind.GOOGLE_FORM:
-            raise HTTPException(400, "Prefilled links only work for Google Forms.")
-        return {"url": google_prefill_url(s.form, s.answers)}
+        if s.form.kind != SourceKind.GOOGLE_FORM or "action" not in s.form.submit:
+            raise HTTPException(400, "Prefilled links only work for Google Forms. Use the Approve button instead.")
+        url = google_prefill_url(s.form, s.answers)
+        request.app.state.sessions.drop(s.id)
+        return {"url": url, "reply": "Opened the form with your answers filled in. Check it and press Submit there."}
 
     @app.post("/api/chat/{sid}/submit")
     async def submit(request: Request, sid: str):

@@ -3,8 +3,10 @@ from io import BytesIO
 from docx import Document
 from fastapi.testclient import TestClient
 
+from app.ingest.google_form import parse_google_form
 from app.main import create_app
 from tests.helpers import fake_model, make_docx
+from tests.test_ingest import google_form_html
 
 FIELDS = ["Full name", "Employee ID", "Department", "Leave type", "Start date", "End date", "Reason", "Manager"]
 
@@ -86,4 +88,26 @@ def test_browser_login_only_from_this_computer(tmp_path):
     client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path))
     assert set(client.get("/api/browser/status").json()) == {"installed"}
     r = client.post("/api/browser/login")  # TestClient isn't a loopback address
+    assert r.status_code == 400 and "computer running Form Finder" in r.json()["detail"]
+
+
+def test_prefill_link_ends_the_session(tmp_path):
+    app = create_app(model=fake_model(handler), data_dir=tmp_path)
+    url = "https://docs.google.com/forms/d/e/ABC/viewform"
+    app.state.kb.save(parse_google_form(google_form_html(), url, "g1"))
+    client = TestClient(app)
+    turn = client.post("/api/chat", json={"message": "leave this friday"}).json()
+    sid = turn["session_id"]
+    client.put(f"/api/chat/{sid}/answers", json={"answers": {"entry.111": "Ana"}})
+
+    r = client.post(f"/api/chat/{sid}/prefill").json()
+    assert r["url"].startswith("https://docs.google.com/forms/d/e/ABC/viewform?usp=pp_url&entry.111=Ana")
+    assert client.get(f"/api/chat/{sid}/review").status_code == 404  # answers dropped
+
+
+def test_password_protects_everything_and_disables_sign_in(tmp_path):
+    client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path, password="pw"))
+    assert client.get("/api/forms").status_code == 401
+    assert client.get("/", auth=("me", "pw")).status_code == 200
+    r = client.post("/api/browser/login", auth=("me", "pw"))
     assert r.status_code == 400 and "computer running Form Finder" in r.json()["detail"]

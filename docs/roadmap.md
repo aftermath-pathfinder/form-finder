@@ -9,7 +9,8 @@
 - [x] Playwright: Google Apps Script web apps (optional browser add-on)
 - [x] Playwright: forms that require Google sign-in (sign in once; only the login is saved, never answers)
 - [ ] Try the browser add-on against real Apps Script apps and a sign-in-only Google Form
-- [ ] Deploy somewhere with a password (Render / Hugging Face Spaces)
+- [x] Password protection (`APP_PASSWORD`) + Dockerfile
+- [ ] Deploy it (Render / Railway / Hugging Face Spaces) and build the Docker image for real
 
 ## Later
 - [ ] Scanned/flat PDFs (OCR + place text by position)
