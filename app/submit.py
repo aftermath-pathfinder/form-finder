@@ -124,7 +124,8 @@ _PROBLEM_TEXT = re.compile(r"\b(error|invalid|failed|is required|required field|
 _SUCCESS_TEXT = re.compile(r"\b(thank|received|submitted|success|recorded|sent|saved)", re.I)
 # "could not be saved", "not sent", "failed to submit": success words that mean failure.
 _NEGATED_SUCCESS = re.compile(
-    r"\b(not|n't|unable to|failed to|nothing (was|is))\b[^.\n]{0,40}?\b(save|sav|sent|send|submit|receiv|record)",
+    r"(?:\b(?:not|never|unable to|failed to)|n't)\s+(?:be(?:en)?\s+)?(?:sav|sen[dt]|submit|receiv|record)"
+    r"|\bnothing (?:was|is|has been) (?:sav|sent|submit|receiv|record)",
     re.I,
 )
 # Live value of each field as the page has it now, including values page scripts set after load.

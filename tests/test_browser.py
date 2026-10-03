@@ -249,6 +249,10 @@ def test_apps_script_ignores_required_controls_outside_the_form():
         ("Submission failed: not sent.", False),
         ("Invalid date. Nothing was submitted.", False),
         ("Error: quota exceeded", False),
+        ("Error: request couldn't be saved", False),
+        ("Not seeing your email? Your request was received", True),
+        ("Thanks! Do not reply; we have received it.", True),
+        ("Your request has been submitted and cannot be edited", True),
     ],
 )
 def test_confirmed_reads_the_new_text(text, ok):
