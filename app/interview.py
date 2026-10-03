@@ -88,11 +88,9 @@ class Session:
     asks: dict[str, int] = field(default_factory=dict)
     current_batch: list[str] = field(default_factory=list)
     done: bool = False
+    # Set once the user has seen what the live page pre-fills (Apps Script); see submit.PageHasValues.
+    page_values_reviewed: bool = False
     touched: float = field(default_factory=time.time)
-
-    def __post_init__(self) -> None:
-        # Start from what the page pre-fills, so it shows on the review screen and isn't asked again.
-        self.apply({f.id: f.default for f in self.form.fields if f.default}, [])
 
     def apply(self, raw_answers: dict[str, Any], skipped: list[str]) -> list[str]:
         """Store extracted answers. Returns ids that were rejected as invalid."""

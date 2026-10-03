@@ -189,7 +189,14 @@ function renderReview(turn) {
       }
       const res = await api(`/api/chat/${sessionId}/submit`, { method: "POST" });
       if ((res.headers.get("content-type") || "").includes("application/json")) {
-        say(md((await res.json()).reply));
+        const data = await res.json();
+        if (data.stage === "review") {
+          // The live form pre-filled things you weren't asked about: nothing was sent, review them.
+          box.remove();
+          renderReview(data);
+          return;
+        }
+        say(md(data.reply));
       } else {
         const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1] || "filled";
         const url = URL.createObjectURL(await res.blob());

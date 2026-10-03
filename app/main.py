@@ -17,7 +17,7 @@ from .interview import Session, SessionStore
 from .knowledge_base import KnowledgeBase
 from .llm import build_model
 from .models import FormField, SourceKind
-from .submit import SubmitError, google_prefill_url, submit_online
+from .submit import PageHasValues, SubmitError, google_prefill_url, submit_online
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -220,7 +220,17 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None, p
 
         if s.form.online:
             try:
-                msg = await submit_online(s.form, s.answers, browser_profile=request.app.state.browser_profile)
+                msg = await submit_online(
+                    s.form,
+                    s.answers,
+                    browser_profile=request.app.state.browser_profile,
+                    page_values_reviewed=s.page_values_reviewed,
+                )
+            except PageHasValues as e:
+                # Nothing sent. Show what the page pre-filled (memory only) and ask for approval again.
+                s.apply(e.values, [])
+                s.page_values_reviewed = True
+                return {"session_id": s.id, "form": s.form.summary(), "stage": "review", "reply": str(e), **_review(s)}
             except SubmitError as e:
                 raise HTTPException(502, str(e)) from e
             request.app.state.sessions.drop(s.id)

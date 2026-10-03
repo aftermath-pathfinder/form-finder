@@ -37,9 +37,6 @@ class FormField(BaseModel):
     options: list[str] = Field(default_factory=list)
     help: str = ""
     question: str = ""  # natural-language question written by the AI at ingest time
-    # What the page itself pre-fills (text, pre-selected option, pre-ticked boxes). Starts as the
-    # answer, so the review screen shows it and nothing is silently kept or wiped.
-    default: str | list[str] | None = None
 
     def ask(self) -> str:
         return self.question or self.label

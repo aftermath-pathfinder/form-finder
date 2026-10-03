@@ -113,3 +113,35 @@ def test_password_protects_everything_and_disables_sign_in(tmp_path):
     assert client.get("/api/browser/status", auth=("me", "pw")).json()["hosted"] is True
     r = client.post("/api/browser/login", json={}, auth=("me", "pw"))
     assert r.status_code == 400 and "computer running Form Finder" in r.json()["detail"]
+
+
+def test_page_prefilled_values_return_to_review_then_submit(tmp_path, monkeypatch):
+    """The submit route's side of PageHasValues: nothing sent, values shown, second approval sends."""
+    import app.main as main_module
+    from app.models import FormField, FormSchema, SourceKind
+    from app.submit import PageHasValues
+
+    calls = []
+
+    async def fake_submit(form, answers, browser_profile=None, *, page_values_reviewed=False):
+        calls.append((dict(answers), page_values_reviewed))
+        if not page_values_reviewed:
+            raise PageHasValues({"email": "ana@example.com"})
+        return "Submitted."
+
+    monkeypatch.setattr(main_module, "submit_online", fake_submit)
+    app = create_app(model=fake_model(handler), data_dir=tmp_path)
+    fields = [FormField(id="name", label="Name"), FormField(id="email", label="Email")]
+    app.state.kb.save(FormSchema(id="s1", title="Leave", kind=SourceKind.APPS_SCRIPT, source=URL_AS, fields=fields))
+    client = TestClient(app)
+    sid = client.post("/api/chat", json={"message": "leave"}).json()["session_id"]
+    client.put(f"/api/chat/{sid}/answers", json={"answers": {"name": "Ana"}})
+
+    turn = client.post(f"/api/chat/{sid}/submit").json()
+    assert turn["stage"] == "review" and {f["id"]: f["value"] for f in turn["fields"]}["email"] == "ana@example.com"
+
+    assert client.post(f"/api/chat/{sid}/submit").json()["stage"] == "done"
+    assert calls == [({"name": "Ana"}, False), ({"name": "Ana", "email": "ana@example.com"}, True)]
+
+
+URL_AS = "https://script.google.com/macros/s/ABC/exec"

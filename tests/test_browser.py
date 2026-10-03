@@ -9,8 +9,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 from app.ingest.apps_script_form import read_apps_script
-from app.interview import Session
-from app.submit import SubmitError, submit_apps_script_page
+from app.submit import PageHasValues, SubmitError, submit_apps_script_page
 
 pytest.importorskip("playwright")
 from playwright.async_api import Error as PlaywrightError  # noqa: E402
@@ -143,13 +142,13 @@ def test_apps_script_submit_without_a_button_sends_nothing():
     assert run({**APP, USER_HTML: no_button}, go) == "null"
 
 
-def submit_with(form_html: str, answers: dict):
+def submit_with(form_html: str, answers: dict, reviewed: bool = False):
     """Ingest + submit against `form_html`; returns (message or SubmitError, what the page recorded)."""
 
     async def go(page: Page):
         form = await read_apps_script(page, URL, "a1")
         try:
-            msg = await submit_apps_script_page(page, form, answers)
+            msg = await submit_apps_script_page(page, form, answers, page_values_reviewed=reviewed)
         except SubmitError as e:
             msg = e
         return msg, await page.frame(url=USER_HTML).evaluate("window.__submitted ?? null")
@@ -157,16 +156,43 @@ def submit_with(form_html: str, answers: dict):
     return run({**APP, USER_HTML: form_html}, go)
 
 
-def test_apps_script_submit_only_sends_what_the_user_approved():
-    # The page pre-ticks "Manager", pre-selects "Morning" and pre-fills notes; the user chose none of them.
-    preset = (
-        FORM.replace('value="mgr">', 'value="mgr" checked>')
-        .replace('value="am">', 'value="am" checked>')
-        .replace('<textarea name="notes"></textarea>', '<textarea name="notes">Subscribe me</textarea>')
-    )
-    msg, submitted = submit_with(preset, {"fullName": "Ana", "notify": ["HR"]})
+PRESET = (
+    FORM.replace('value="mgr">', 'value="mgr" checked>')
+    .replace('value="am">', 'value="am" checked>')
+    .replace('<textarea name="notes"></textarea>', '<textarea name="notes">Subscribe me</textarea>')
+)
+
+
+def test_apps_script_page_prefills_go_back_to_review_first():
+    # The page pre-ticks "Manager", pre-selects "Morning", pre-fills notes. The user was asked none of it.
+    msg, submitted = submit_with(PRESET, {"fullName": "Ana", "notify": ["HR"]})
+    assert isinstance(msg, PageHasValues) and submitted is None  # nothing sent
+    assert msg.values == {"half": ["Morning"], "notes": "Subscribe me"}  # "notify" was answered: user wins
+
+
+def test_apps_script_after_review_sends_exactly_the_approved_answers():
+    # On review the user kept "Morning" and cleared the notes.
+    msg, submitted = submit_with(PRESET, {"fullName": "Ana", "notify": ["HR"], "half": "Morning"}, reviewed=True)
     assert msg == "Submitted."
-    assert submitted["notify"] == ["hr"] and submitted["half"] is None and submitted["notes"] == ""
+    assert submitted["notify"] == ["hr"] and submitted["half"] == "am" and submitted["notes"] == ""
+
+
+def test_apps_script_sees_values_set_by_page_scripts():
+    scripted = FORM.replace("<script>", '<script>document.getElementById("fullName").value = "ana@example.com";', 1)
+    msg, _ = submit_with(scripted, {"notes": "hi"})
+    assert isinstance(msg, PageHasValues) and msg.values == {"fullName": "ana@example.com"}
+
+
+def test_apps_script_fills_hidden_styled_dropdowns():
+    hidden = FORM.replace('<select id="kind">', '<select id="kind" style="display:none">')
+    msg, submitted = submit_with(hidden, {"fullName": "Ana", "kind": "Sick"})
+    assert msg == "Submitted." and submitted["kind"] == "s"
+
+
+def test_apps_script_success_message_mentioning_required_is_still_success():
+    note = FORM.replace('textContent = "Thanks!"', 'textContent = "Request received. Manager approval is required."')
+    msg, _ = submit_with(note, {"fullName": "Ana"})
+    assert msg == "Submitted."
 
 
 def test_apps_script_submit_refuses_when_the_page_says_a_field_is_invalid():
@@ -212,22 +238,3 @@ def test_apps_script_ignores_required_controls_outside_the_form():
     with_search = FORM.replace("<body>", '<body><input type="search" name="q" required>', 1)
     msg, submitted = submit_with(with_search, {"fullName": "Ana"})
     assert msg == "Submitted." and submitted["fullName"] == "Ana"
-
-
-def test_apps_script_page_defaults_become_starting_answers():
-    preset = FORM.replace('value="mgr">', 'value="mgr" checked>').replace(
-        '<option value="s">Sick</option>', '<option value="s" selected>Sick</option>'
-    )
-
-    async def go(page: Page):
-        return await read_apps_script(page, URL, "a1")
-
-    form = run({**APP, USER_HTML: preset}, go)
-    session = Session(form=form)
-    assert session.answers["notify"] == ["Manager"] and session.answers["kind"] == "Sick"
-
-
-def test_apps_script_submit_handles_hidden_custom_radios():
-    hidden = FORM.replace('type="radio"', 'type="radio" style="display:none"')
-    msg, submitted = submit_with(hidden, {"fullName": "Ana", "half": "Afternoon"})
-    assert msg == "Submitted." and submitted["half"] == "pm"

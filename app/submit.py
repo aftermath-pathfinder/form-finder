@@ -28,6 +28,18 @@ class SubmitError(RuntimeError):
     """The form wasn't submitted. The message is shown to the user as-is."""
 
 
+class PageHasValues(SubmitError):
+    """The live page pre-fills fields the user wasn't asked about. Nothing was sent.
+
+    `values` (field id -> value) go back to the review screen, held in memory only, so the user
+    approves them explicitly instead of them being silently sent or wiped.
+    """
+
+    def __init__(self, values: dict[str, Any]):
+        super().__init__("The form already had some answers filled in. Check them below and approve again.")
+        self.values = values
+
+
 def google_form_payload(form: FormSchema, answers: dict[str, Any]) -> list[tuple[str, str]]:
     data: list[tuple[str, str]] = []
     for f in form.fields:
@@ -106,7 +118,31 @@ _INVALID_JS = """(sels) => {
   return controls.filter((e) => e.willValidate && !e.checkValidity()).map((e) => e.name || e.id || "");
 }"""
 _PAGE_TEXT_JS = "() => document.body ? document.body.innerText : ''"
-_PROBLEM_TEXT = re.compile(r"\b(error|invalid|failed|try again|required)\b", re.I)
+# Words that mean the submit failed, unless a success word is also there
+# ("Request received. Manager approval is required." is a success).
+_PROBLEM_TEXT = re.compile(r"\b(error|invalid|failed|is required|required field|could not|couldn't)\b", re.I)
+_SUCCESS_TEXT = re.compile(r"\b(thank|received|submitted|success|recorded|sent|saved)", re.I)
+# Live value of each field as the page has it now, including values page scripts set after load.
+_LIVE_VALUES_JS = """([selectors, optionSelectors]) => {
+  const out = {};
+  for (const [id, sel] of Object.entries(selectors)) {
+    const opts = optionSelectors[id];
+    if (opts) {
+      const on = Object.entries(opts).filter(([, s]) => document.querySelector(s)?.checked).map(([t]) => t);
+      if (on.length) out[id] = on;
+      continue;
+    }
+    const el = document.querySelector(sel);
+    if (!el || el.readOnly || el.disabled) continue;
+    if (el.tagName === "SELECT") {
+      const o = el.selectedOptions[0];
+      if (o && o.value) out[id] = o.textContent.trim();
+    } else if (el.value) {
+      out[id] = el.value;
+    }
+  }
+  return out;
+}"""
 
 
 async def _set_checked(box: Locator, on: bool) -> None:
@@ -146,8 +182,14 @@ async def fill_frame(frame: Frame, form: FormSchema, answers: dict[str, Any]) ->
                     )
                 for text, sel in options.items():
                     await _set_checked(frame.locator(sel).first, text in values)
+            elif await field.evaluate("el => el.readOnly || el.disabled"):
+                continue  # the page owns it (older schemas may still list such fields)
             elif f.type == "dropdown" and values:
-                await field.select_option(label=values, timeout=_FIELD_TIMEOUT_MS)
+                if await field.is_visible():
+                    await field.select_option(label=values, timeout=_FIELD_TIMEOUT_MS)
+                else:  # styled dropdowns (e.g. Materialize) hide the real <select>
+                    value = form.submit.get("option_values", {}).get(f.id, {}).get(values[0], values[0])
+                    await field.evaluate(_SET_VALUE_JS, value)
             elif not values:
                 await field.evaluate(_SET_VALUE_JS, "")  # clearing never needs the field to be visible
             elif await field.is_visible() and await field.is_editable():
@@ -191,19 +233,26 @@ async def _page_state(page: Page, frame: Frame) -> tuple[str, str | None]:
 
 
 def _confirmed(before: tuple[str, str | None], after: tuple[str, str | None]) -> bool:
-    """Did the page react like a successful submit? New page, or new text that isn't an error."""
+    """Did the page react like a successful submit? Moved on, or showed new text that isn't an error."""
+    if browser.on_login_page(after[0]):
+        return False
     if after[0] != before[0] or after[1] is None:
         return True
     old = set((before[1] or "").splitlines())
-    added = [line for line in after[1].splitlines() if line.strip() and line not in old]
-    return bool(added) and not any(_PROBLEM_TEXT.search(line) for line in added)
+    added = "\n".join(line for line in after[1].splitlines() if line.strip() and line not in old)
+    if not added:
+        return False
+    return bool(_SUCCESS_TEXT.search(added)) or not _PROBLEM_TEXT.search(added)
 
 
-async def submit_apps_script_page(page: Page, form: FormSchema, answers: dict[str, Any]) -> str:
+async def submit_apps_script_page(
+    page: Page, form: FormSchema, answers: dict[str, Any], *, page_values_reviewed: bool = False
+) -> str:
     """Open the form in `page`, fill it, check the page accepts it, click submit, and confirm a reaction.
 
     Anything short of a clear success raises `SubmitError`, so the session (and the user's answers)
-    is kept for another try.
+    is kept for another try. The first time, if the live page pre-fills fields the user wasn't asked
+    about, `PageHasValues` sends them to the review screen instead of sending or wiping them.
     """
     await browser.goto(page, form.source)
     if browser.on_login_page(page.url):
@@ -214,6 +263,13 @@ async def submit_apps_script_page(page: Page, form: FormSchema, answers: dict[st
             "Couldn't find the form on the Apps Script page, so nothing was sent. Check the link still "
             "opens in your browser."
         )
+    if not page_values_reviewed:
+        live = await frame.evaluate(
+            _LIVE_VALUES_JS, [form.submit.get("selectors", {}), form.submit.get("option_selectors", {})]
+        )
+        unseen = {fid: v for fid, v in live.items() if fid not in answers}
+        if unseen:
+            raise PageHasValues(unseen)
     await fill_frame(frame, form, answers)
 
     ours = list(form.submit.get("selectors", {}).values())
@@ -272,11 +328,15 @@ async def post_signed_in_google_form(request: _Poster, form: FormSchema, answers
     return "Submitted."
 
 
-async def _submit_in_browser(form: FormSchema, answers: dict[str, Any], profile: Path | None) -> str:
+async def _submit_in_browser(
+    form: FormSchema, answers: dict[str, Any], profile: Path | None, page_values_reviewed: bool
+) -> str:
     try:
         async with browser.browser_context(profile) as context:
             if form.kind == SourceKind.APPS_SCRIPT:
-                return await submit_apps_script_page(await context.new_page(), form, answers)
+                return await submit_apps_script_page(
+                    await context.new_page(), form, answers, page_values_reviewed=page_values_reviewed
+                )
             return await post_signed_in_google_form(context.request, form, answers)
     except browser.BrowserError as e:
         raise SubmitError(str(e)) from e
@@ -285,7 +345,13 @@ async def _submit_in_browser(form: FormSchema, answers: dict[str, Any], profile:
 # ---- dispatch ------------------------------------------------------------
 
 
-async def submit_online(form: FormSchema, answers: dict[str, Any], browser_profile: Path | None = None) -> str:
+async def submit_online(
+    form: FormSchema,
+    answers: dict[str, Any],
+    browser_profile: Path | None = None,
+    *,
+    page_values_reviewed: bool = False,
+) -> str:
     """Submit and return a short confirmation message.
 
     `browser_profile` is the saved Google login for browser-only forms (default: from settings).
@@ -293,7 +359,7 @@ async def submit_online(form: FormSchema, answers: dict[str, Any], browser_profi
     if form.kind == SourceKind.APPS_SCRIPT or (
         form.kind == SourceKind.GOOGLE_FORM and form.submit.get("requires_login")
     ):
-        return await _submit_in_browser(form, answers, browser_profile)
+        return await _submit_in_browser(form, answers, browser_profile, page_values_reviewed)
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=30, headers=BROWSER_HEADERS) as client:
         if form.kind == SourceKind.GOOGLE_FORM:

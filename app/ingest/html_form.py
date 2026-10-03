@@ -76,26 +76,13 @@ def parse_html_form(html: str, url: str, form_id: str, scripted: bool = False) -
         required = el.has_attr("required")
 
         if el.name == "textarea":
-            fields[fid] = FormField(
-                id=fid,
-                label=_label_for(el, soup, fid),
-                type="paragraph",
-                required=required,
-                default=el.get_text().strip() or None,
-            )
+            fields[fid] = FormField(id=fid, label=_label_for(el, soup, fid), type="paragraph", required=required)
         elif el.name == "select":
             opts = {o.get_text(strip=True): o.get("value", o.get_text(strip=True)) for o in el.find_all("option")}
             opts = {k: v for k, v in opts.items() if k and v}
             option_values[fid] = opts
-            chosen = el.find("option", selected=True)
-            chosen_text = chosen.get_text(strip=True) if chosen else ""
             fields[fid] = FormField(
-                id=fid,
-                label=_label_for(el, soup, fid),
-                type="dropdown",
-                required=required,
-                options=list(opts),
-                default=chosen_text if chosen_text in opts else None,
+                id=fid, label=_label_for(el, soup, fid), type="dropdown", required=required, options=list(opts)
             )
         else:
             itype = (el.get("type") or "text").lower()
@@ -116,20 +103,11 @@ def parse_html_form(html: str, url: str, form_id: str, scripted: bool = False) -
                 group.required = group.required or required
                 group.options.append(text)
                 option_values.setdefault(fid, {})[text] = value
-                if el.has_attr("checked"):
-                    if itype == "radio":
-                        group.default = text
-                    else:
-                        group.default = [*(group.default or []), text]
                 own = css_attr("id", el["id"]) if el.get("id") else selector + css_attr("value", value)
                 option_selectors.setdefault(fid, {})[text] = own
             else:
                 fields[fid] = FormField(
-                    id=fid,
-                    label=_label_for(el, soup, fid),
-                    type=_TYPES.get(itype, "text"),
-                    required=required,
-                    default=el.get("value") or None,
+                    id=fid, label=_label_for(el, soup, fid), type=_TYPES.get(itype, "text"), required=required
                 )
         selectors.setdefault(fid, selector)
 
