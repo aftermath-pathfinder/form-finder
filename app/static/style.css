@@ -22,12 +22,14 @@ input, textarea, select {
   width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--bg); color: var(--text); font: inherit;
 }
-button, .upload span {
+button, aside .secondary { margin-left: 0; }
+.upload span {
   display: inline-block; margin-top: 8px; padding: 8px 14px; border: 0; border-radius: 6px;
   background: var(--accent); color: var(--accent-text); font: inherit; cursor: pointer;
 }
 button:disabled { opacity: .5; cursor: default; }
 .secondary { margin-left: 8px; background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+aside .secondary { margin-left: 0; }
 .upload span { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 .status { color: var(--muted); font-size: 13px; min-height: 1.5em; }
 .status.error, .error { color: var(--warn); }

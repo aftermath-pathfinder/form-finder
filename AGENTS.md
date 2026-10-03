@@ -25,6 +25,7 @@ ruff check app tests && ruff format app tests # lint + format; must pass before 
 | Any prompt sent to the AI | `app/ai.py` only |
 | New form source (reader) | `app/ingest/<source>_form.py` + register in `app/ingest/__init__.py` |
 | Filling a file / submitting online | `app/fill.py` / `app/submit.py` |
+| Real-browser helpers (Playwright, optional) | `app/browser.py` |
 | Question batching, answer validation | `app/interview.py` |
 | AI provider / model setup | `app/llm.py` (usually just `.env`) |
 | HTTP routes | `app/main.py` only |

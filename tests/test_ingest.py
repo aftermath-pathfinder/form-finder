@@ -1,14 +1,26 @@
+import asyncio
 import json
+import sys
 from io import BytesIO
+from types import SimpleNamespace
+from urllib.parse import parse_qsl
 
+import pytest
 from docx import Document
 from pypdf import PdfReader
 
 from app.fill import fill_docx, fill_pdf
-from app.ingest import ingest_file
+from app.ingest import IngestError, ingest_file, ingest_url
 from app.ingest.google_form import form_response_url, parse_google_form
 from app.ingest.html_form import parse_html_form
-from app.submit import google_form_payload, google_prefill_url, html_form_payload
+from app.submit import (
+    SubmitError,
+    google_form_payload,
+    google_prefill_url,
+    html_form_payload,
+    post_signed_in_google_form,
+    submit_online,
+)
 from tests.helpers import make_docx, make_pdf
 
 
@@ -105,3 +117,68 @@ def test_docx_roundtrip():
     filled = fill_docx(template, form, {"Full name": "Ana", "Start date": "2026-10-09"})
     text = [p.text for p in Document(BytesIO(filled)).paragraphs]
     assert text == ["Name: Ana", "Leave from 2026-10-09 to ____________", "Again Ana"]
+
+
+def test_html_form_falls_back_to_id_only_for_scripted_pages():
+    html = """<html><body>
+      <label for="fullName">Full name</label><input id="fullName" required>
+      <input name="email" id="em" type="email" placeholder="Email">
+      <select id="team"><option>Ops</option><option>Sales</option></select>
+      <label><input type="radio" name="shift" value="am"> Morning</label>
+      <input type="checkbox" id="agree"><label for="agree">I agree</label>
+      <button onclick="go()">Submit</button></body></html>"""
+    form = parse_html_form(html, "https://example.com/app", "f3", scripted=True)  # no <form> tag at all
+    by_id = {f.id: f for f in form.fields}
+    assert list(by_id) == ["fullName", "email", "team", "shift", "agree"]
+    assert by_id["fullName"].label == "Full name" and by_id["fullName"].required
+    assert form.submit["selectors"] == {
+        "fullName": '[id="fullName"]',
+        "email": '[name="email"]',  # name wins over id
+        "team": '[id="team"]',
+        "shift": '[name="shift"]',
+        "agree": '[id="agree"]',
+    }
+    assert form.submit["option_selectors"] == {
+        "shift": {"Morning": '[name="shift"][value="am"]'},
+        "agree": {"I agree": '[id="agree"]'},
+    }
+
+    # A plain HTTP submit only sends named fields, so id-only ones aren't asked for there.
+    plain = parse_html_form(f"<form>{html}</form>", "https://example.com/app", "f4")
+    assert [f.id for f in plain.fields] == ["email", "shift"]
+
+
+def test_signed_in_google_form_posts_through_browser_request():
+    form = parse_google_form(google_form_html(), "https://docs.google.com/forms/d/e/ABC/viewform", "f5")
+    form.submit["requires_login"] = True
+
+    class FakeRequest:  # stands in for Playwright's BrowserContext.request (shares login cookies)
+        def __init__(self):
+            self.calls = []
+
+        async def post(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return SimpleNamespace(url=url.replace("formResponse", "formResponse?ok"), status=200)
+
+    req = FakeRequest()
+    assert asyncio.run(post_signed_in_google_form(req, form, {"entry.111": "Ana Cruz"})) == "Submitted."
+    url, kwargs = req.calls[0]
+    assert url == "https://docs.google.com/forms/d/e/ABC/formResponse"
+    assert parse_qsl(kwargs["data"]) == [("entry.111", "Ana Cruz"), ("pageHistory", "0,1")]
+
+    async def expired(url, **kwargs):
+        return SimpleNamespace(url="https://accounts.google.com/v3/signin", status=200)
+
+    req.post = expired
+    with pytest.raises(SubmitError, match="sign-in has expired"):
+        asyncio.run(post_signed_in_google_form(req, form, {"entry.111": "Ana"}))
+
+
+def test_browser_sources_without_the_addon_say_how_to_install(monkeypatch, tmp_path):
+    monkeypatch.setitem(sys.modules, "playwright.async_api", None)  # behaves as if not installed
+    with pytest.raises(IngestError, match="pip install playwright"):
+        asyncio.run(ingest_url("https://script.google.com/macros/s/ABC/exec", browser_profile=tmp_path / "p"))
+    form = parse_google_form(google_form_html(), "https://docs.google.com/forms/d/e/ABC/viewform", "f6")
+    form.submit["requires_login"] = True
+    with pytest.raises(SubmitError, match="playwright install chromium"):
+        asyncio.run(submit_online(form, {"entry.111": "Ana"}, browser_profile=tmp_path / "p"))

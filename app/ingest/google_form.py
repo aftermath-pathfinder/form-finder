@@ -1,8 +1,15 @@
+from __future__ import annotations
+
 import json
 import re
+from typing import TYPE_CHECKING
 
+from .. import browser
 from ..models import FormField, FormSchema, SourceKind
 from .errors import IngestError
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
 
 _DATA_RE = re.compile(r"FB_PUBLIC_LOAD_DATA_\s*=\s*(\[.*?\]);\s*</script>", re.S)
 
@@ -61,3 +68,16 @@ def parse_google_form(html: str, url: str, form_id: str) -> FormSchema:
         fields=fields,
         submit={"action": form_response_url(url), "pages": pages},
     )
+
+
+async def read_signed_in_google_form(page: Page, url: str, form_id: str) -> FormSchema:
+    """Open a sign-in-only Google Form in a browser that carries the saved Google login."""
+    await browser.goto(page, url)
+    if browser.on_login_page(page.url) or not is_google_form(page.url):
+        raise IngestError(
+            "That Google Form needs sign-in. Click “Sign in to Google” in the left panel, sign in, close that "
+            "window, then add the link again. (Or open the form yourself and submit it there.)"
+        )
+    form = parse_google_form(await page.content(), page.url, form_id)
+    form.submit["requires_login"] = True
+    return form

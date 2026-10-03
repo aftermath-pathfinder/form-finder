@@ -31,7 +31,8 @@ Open http://localhost:8000.
 ## Using it
 
 1. **Add forms** in the left panel:
-   - **Google Form link**: public forms only for now.
+   - **Google Form link**: public forms; forms that need sign-in with the browser add-on (below).
+   - **Google Apps Script web app** (`script.google.com/macros/...`): needs the browser add-on.
    - **Web form link**: any page with a normal HTML `<form>`.
    - **PDF**: must be a *fillable* PDF.
    - **Word (.docx)**: mark each blank with double braces, e.g. `Name: {{Full name}}`,
@@ -43,6 +44,22 @@ Open http://localhost:8000.
 
 Your answers are kept in memory only for the current request and are gone after submitting
 (or after an hour). Only blank form templates are saved, under `data/`.
+
+## Browser add-on (optional)
+
+Google Apps Script web apps and Google Forms that require sign-in are read and submitted in a
+real browser (Playwright + Chromium). Everything else works without it.
+
+```bash
+pip install playwright        # or: pip install -r requirements-browser.txt
+playwright install chromium
+```
+
+Restart the app. For sign-in forms (and Apps Script apps that need your account), click
+**Sign in to Google** in the left panel: a browser window opens, sign in, then close it. Your login
+is kept in `data/browser-profile/` (delete that folder to sign out). This only works when Form
+Finder runs on your own computer, since the window opens there. Your form answers are never saved
+in that profile.
 
 ## Switching AI provider
 
@@ -69,9 +86,10 @@ app/
   main.py            API routes + serves the web page
   ai.py              every AI prompt, as Pydantic AI agents with typed outputs
   interview.py       4–6 question batching, answer validation, in-memory sessions
-  ingest/            read forms: google_form, html_form, pdf_form, docx_form
+  ingest/            read forms: google_form, html_form, apps_script_form, pdf_form, docx_form
   fill.py            write answers into PDF / DOCX
-  submit.py          submit Google Forms / HTML forms
+  submit.py          submit Google Forms / HTML forms / Apps Script
+  browser.py         optional real browser (Playwright) + saved Google login
   llm.py             builds the AI model from .env (provider switch + fallback)
   static/            the web page (plain HTML/JS, no build step)
 tests/               run with: python -m pytest

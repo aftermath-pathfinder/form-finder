@@ -44,6 +44,7 @@ Adding a form is separate: `ingest/` reads the source into a `FormSchema`, then
 | `ingest/` | source → `FormSchema` | call the AI |
 | `interview.py` | batching, validation, sessions | call the AI or HTTP |
 | `fill.py`, `submit.py` | output | ask questions |
+| `browser.py` | optional Playwright browser: saved Google login, throwaway contexts, frame finding | parse forms, see answers outside a submit |
 | `knowledge_base.py` | storing templates + schemas | store answers |
 
 ## Batching rule (4–6 questions)
@@ -61,5 +62,20 @@ Unanswered optional fields are asked once.
 | HTML form | BeautifulSoup | GET/POST with fresh hidden inputs |
 | Fillable PDF | pypdf AcroForm fields | filled PDF download |
 | DOCX | `{{placeholder}}` markers | filled DOCX download |
-| Apps Script web app | **not yet** (needs a browser) | **not yet** |
-| Sign-in-only Google Form | **not yet** | **not yet** |
+| Apps Script web app * | browser: frame with the most inputs → `parse_html_form(scripted=True)` | browser: fill each field, click Submit |
+| Sign-in-only Google Form * | browser with saved Google login → `parse_google_form` | POST to `/formResponse` via the browser's request API (login cookies) |
+
+\* Needs the optional browser add-on (`app/browser.py`, Playwright + Chromium). Without it these
+links fail with a message saying how to install it.
+
+### Browser add-on
+
+- **Saved login:** `POST /api/browser/login` opens a visible Chromium on Google's sign-in page using
+  the profile `<data_dir>/browser-profile`. Only works when the app runs on your own computer
+  (loopback request, a screen available). That profile holds only the Google login.
+- **Throwaway contexts:** reading and submitting copy the login cookies out of the profile into a
+  fresh headless context, so nothing typed into a form (autofill, history, cache) touches disk.
+- **Apps Script:** the user's HTML sits two iframes deep (outer page → sandbox → `userHtmlFrame`) and
+  usually submits via `google.script.run`. Fields may have only an `id`, so `parse_html_form`
+  records how to find each one in `submit["selectors"]` (and `submit["option_selectors"]` per
+  radio/checkbox option); submit uses those to fill the same frame.

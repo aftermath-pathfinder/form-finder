@@ -48,6 +48,7 @@ $("#forms").addEventListener("click", async (e) => {
   if (id && confirm("Remove this form from the knowledge base?")) {
     await api(`/api/forms/${id}`, { method: "DELETE" });
     loadForms();
+checkBrowser();
   }
 });
 
@@ -60,6 +61,7 @@ $("#add-url").addEventListener("submit", async (e) => {
     kbStatus(`Added "${f.title}" (${f.field_count} fields).`);
     e.target.reset();
     loadForms();
+checkBrowser();
   } catch (err) { kbStatus(err.message, true); }
 });
 
@@ -73,8 +75,34 @@ $("#add-file").addEventListener("change", async (e) => {
     const f = await api("/api/forms/upload", { method: "POST", body }).then((r) => r.json());
     kbStatus(`Added "${f.title}" (${f.field_count} fields).`);
     loadForms();
+checkBrowser();
   } catch (err) { kbStatus(err.message, true); }
   e.target.value = "";
+});
+
+// ---- Google sign-in (browser add-on) -------------------------------------
+
+function loginStatus(text, error = false) {
+  $("#login-status").innerHTML = esc(text);
+  $("#login-status").className = "status" + (error ? " error" : "");
+}
+
+async function checkBrowser() {
+  try {
+    const { installed } = await api("/api/browser/status").then((r) => r.json());
+    if (!installed) loginStatus("Browser add-on not installed (needed for Apps Script and sign-in forms). See README.");
+  } catch {}
+}
+
+$("#google-login").addEventListener("click", async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  loginStatus("A browser window opened. Sign in to Google, then close that window.");
+  try {
+    const { signed_in } = await json("/api/browser/login", "POST", {});
+    loginStatus(signed_in ? "Signed in to Google." : "The window closed before sign-in finished.", !signed_in);
+  } catch (err) { loginStatus(err.message, true); }
+  btn.disabled = false;
 });
 
 // ---- chat --------------------------------------------------------------
@@ -199,3 +227,4 @@ $("#composer textarea").addEventListener("keydown", (e) => {
 });
 
 loadForms();
+checkBrowser();

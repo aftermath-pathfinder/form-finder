@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_ai.models import Model
 
-from . import ai
+from . import ai, browser
 from .config import get_settings
 from .fill import fill_docx, fill_pdf
 from .ingest import IngestError, ingest_file, ingest_url
@@ -62,6 +62,8 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None) -
     app = FastAPI(title="Form Finder")
     app.state.model = model or build_model(settings)
     app.state.kb = KnowledgeBase(data_dir or settings.data_dir)
+    # Google login cookies for browser-only forms. Never holds answers.
+    app.state.browser_profile = browser.profile_dir(data_dir or settings.data_dir)
     app.state.sessions = SessionStore()
 
     def kb(request: Request) -> KnowledgeBase:
@@ -89,7 +91,7 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None) -
     @app.post("/api/forms/url")
     async def add_form_url(request: Request, body: UrlIn):
         try:
-            form = await ingest_url(body.url.strip())
+            form = await ingest_url(body.url.strip(), browser_profile=request.app.state.browser_profile)
         except IngestError as e:
             raise HTTPException(422, str(e)) from e
         form = await ai.enrich_form(request.app.state.model, form)
@@ -114,6 +116,24 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None) -
         if not kb(request).delete(form_id):
             raise HTTPException(404, "Form not found.")
         return {"ok": True}
+
+    # ---- browser add-on (Apps Script, sign-in Google Forms) ---------------
+
+    @app.get("/api/browser/status")
+    def browser_status():
+        return {"installed": browser.playwright_installed()}
+
+    @app.post("/api/browser/login")
+    async def browser_login(request: Request):
+        """Open a visible browser on this computer so the user can sign in to Google once."""
+        host = request.client.host if request.client else ""
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(400, "Sign-in opens a window on the computer running Form Finder, so use it there.")
+        try:
+            signed_in = await browser.login_interactive(request.app.state.browser_profile)
+        except browser.BrowserError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"signed_in": signed_in}
 
     # ---- chat -----------------------------------------------------------
 
@@ -185,7 +205,7 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None) -
 
         if s.form.online:
             try:
-                msg = await submit_online(s.form, s.answers)
+                msg = await submit_online(s.form, s.answers, browser_profile=request.app.state.browser_profile)
             except SubmitError as e:
                 raise HTTPException(502, str(e)) from e
             request.app.state.sessions.drop(s.id)

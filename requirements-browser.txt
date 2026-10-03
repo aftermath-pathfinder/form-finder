@@ -1,0 +1,5 @@
+# Optional browser add-on: Google Apps Script web apps and Google Forms that need sign-in.
+# The rest of Form Finder works without it. After installing, also run:
+#   playwright install chromium
+-r requirements.txt
+playwright>=1.56

@@ -6,8 +6,9 @@
 - [x] Migrate `ai.py` to Pydantic AI ([ADR 0001](decisions/0001-tech-stack.md))
 
 ## Next
-- [ ] Playwright: Google Apps Script web apps
-- [ ] Playwright: forms that require Google sign-in (sign in once per session, nothing saved)
+- [x] Playwright: Google Apps Script web apps (optional browser add-on)
+- [x] Playwright: forms that require Google sign-in (sign in once; only the login is saved, never answers)
+- [ ] Try the browser add-on against real Apps Script apps and a sign-in-only Google Form
 - [ ] Deploy somewhere with a password (Render / Hugging Face Spaces)
 
 ## Later

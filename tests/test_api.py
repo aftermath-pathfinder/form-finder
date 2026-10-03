@@ -80,3 +80,10 @@ def test_bad_upload(tmp_path):
     assert r.status_code == 422
     r = client.post("/api/forms/upload", files={"file": ("x.docx", make_docx("no blanks here"))})
     assert r.status_code == 422 and "{{" in r.json()["detail"]
+
+
+def test_browser_login_only_from_this_computer(tmp_path):
+    client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path))
+    assert set(client.get("/api/browser/status").json()) == {"installed"}
+    r = client.post("/api/browser/login")  # TestClient isn't a loopback address
+    assert r.status_code == 400 and "computer running Form Finder" in r.json()["detail"]

@@ -1,12 +1,16 @@
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import httpx
 
+from .. import browser
 from ..models import FormSchema
+from .apps_script_form import is_apps_script, read_apps_script
 from .docx_form import parse_docx
 from .errors import IngestError
-from .google_form import is_google_form, parse_google_form
+from .google_form import is_google_form, parse_google_form, read_signed_in_google_form
 from .html_form import parse_html_form
 from .pdf_form import parse_pdf
 
@@ -21,17 +25,22 @@ def new_form_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-def _is_apps_script(url: str) -> bool:
-    return "script.google.com/macros" in url or "script.googleusercontent.com" in url
+async def _in_browser(
+    read: Callable[[Any, str, str], Awaitable[FormSchema]], url: str, profile: Path | None
+) -> FormSchema:
+    """Run `read(page, url, form_id)` in a headless browser carrying the saved Google login."""
+    try:
+        async with browser.browser_context(profile) as context:
+            return await read(await context.new_page(), url, new_form_id())
+    except browser.BrowserError as e:
+        raise IngestError(str(e)) from e
 
 
-async def ingest_url(url: str) -> FormSchema:
-    if _is_apps_script(url):
-        # These render inside a sandboxed iframe, so a plain fetch sees no form.
-        raise IngestError(
-            "Google Apps Script web apps need a real browser to read. That's on the roadmap "
-            "(Playwright); for now, add Google Forms, regular web forms, PDFs or Word files."
-        )
+async def ingest_url(url: str, browser_profile: Path | None = None) -> FormSchema:
+    """`browser_profile` is the saved Google login used for browser-only forms (default: from settings)."""
+    if is_apps_script(url):
+        # Drawn inside sandboxed iframes, so a plain fetch sees no form.
+        return await _in_browser(read_apps_script, url, browser_profile)
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=30, headers=BROWSER_HEADERS) as client:
             resp = await client.get(url)
@@ -39,10 +48,10 @@ async def ingest_url(url: str) -> FormSchema:
         raise IngestError(f"Couldn't open that link: {e}") from e
 
     final_url = str(resp.url)
-    if "accounts.google.com" in final_url:
-        raise IngestError(
-            "That form requires Google sign-in. Sign-in support is on the roadmap; public forms work today."
-        )
+    if browser.on_login_page(final_url):
+        if not (is_google_form(url) or is_google_form(final_url)):
+            raise IngestError("That page needs a sign-in Form Finder can't do. Public forms and Google Forms work.")
+        return await _in_browser(read_signed_in_google_form, url, browser_profile)
     if resp.status_code >= 400:
         raise IngestError(f"That link returned HTTP {resp.status_code}.")
 
