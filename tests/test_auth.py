@@ -1,3 +1,4 @@
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -22,3 +23,8 @@ def test_password_required_and_checked():
     assert c.get("/", auth=("anyone", "wrong")).status_code == 401
     assert c.get("/", headers={"Authorization": "Basic !!notbase64"}).status_code == 401
     assert c.get("/", auth=("anyone", "s3cret")).json() == {"ok": True}
+
+
+def test_empty_password_is_refused():
+    with pytest.raises(ValueError):
+        PasswordMiddleware(FastAPI(), password="")

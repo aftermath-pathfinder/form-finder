@@ -11,10 +11,14 @@ import secrets
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
+from starlette.types import ASGIApp
 
 
 class PasswordMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, password: str):
+    def __init__(self, app: ASGIApp, password: str) -> None:
+        if not password:
+            # An empty password would let anyone in; callers skip the middleware instead.
+            raise ValueError("PasswordMiddleware needs a non-empty password.")
         super().__init__(app)
         self.password = password.encode()
 
