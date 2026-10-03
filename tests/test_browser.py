@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 from app.ingest.apps_script_form import read_apps_script
-from app.submit import PageHasValues, SubmitError, submit_apps_script_page
+from app.submit import PageHasValues, SubmitError, _confirmed, submit_apps_script_page
 
 pytest.importorskip("playwright")
 from playwright.async_api import Error as PlaywrightError  # noqa: E402
@@ -238,3 +238,24 @@ def test_apps_script_ignores_required_controls_outside_the_form():
     with_search = FORM.replace("<body>", '<body><input type="search" name="q" required>', 1)
     msg, submitted = submit_with(with_search, {"fullName": "Ana"})
     assert msg == "Submitted." and submitted["fullName"] == "Ana"
+
+
+@pytest.mark.parametrize(
+    "text,ok",
+    [
+        ("Thanks! Your request was received.", True),
+        ("Request received. Manager approval is required.", True),
+        ("Error: your request could not be saved.", False),
+        ("Submission failed: not sent.", False),
+        ("Invalid date. Nothing was submitted.", False),
+        ("Error: quota exceeded", False),
+    ],
+)
+def test_confirmed_reads_the_new_text(text, ok):
+    before = ("https://x/exec", "Leave form")
+    assert _confirmed(before, ("https://x/exec", "Leave form\n" + text)) is ok
+
+
+def test_confirmed_is_cautious_when_the_form_just_vanishes():
+    assert _confirmed(("https://x/exec", "Leave form"), ("https://x/exec", None)) is False
+    assert _confirmed(("https://x/exec", "Leave form"), ("https://x/done", None)) is True

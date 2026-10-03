@@ -122,6 +122,11 @@ _PAGE_TEXT_JS = "() => document.body ? document.body.innerText : ''"
 # ("Request received. Manager approval is required." is a success).
 _PROBLEM_TEXT = re.compile(r"\b(error|invalid|failed|is required|required field|could not|couldn't)\b", re.I)
 _SUCCESS_TEXT = re.compile(r"\b(thank|received|submitted|success|recorded|sent|saved)", re.I)
+# "could not be saved", "not sent", "failed to submit": success words that mean failure.
+_NEGATED_SUCCESS = re.compile(
+    r"\b(not|n't|unable to|failed to|nothing (was|is))\b[^.\n]{0,40}?\b(save|sav|sent|send|submit|receiv|record)",
+    re.I,
+)
 # Live value of each field as the page has it now, including values page scripts set after load.
 _LIVE_VALUES_JS = """([selectors, optionSelectors]) => {
   const out = {};
@@ -236,11 +241,13 @@ def _confirmed(before: tuple[str, str | None], after: tuple[str, str | None]) ->
     """Did the page react like a successful submit? Moved on, or showed new text that isn't an error."""
     if browser.on_login_page(after[0]):
         return False
-    if after[0] != before[0] or after[1] is None:
+    if after[0] != before[0]:
         return True
+    if after[1] is None:
+        return False  # the form vanished without moving on: can't tell, so don't claim success
     old = set((before[1] or "").splitlines())
     added = "\n".join(line for line in after[1].splitlines() if line.strip() and line not in old)
-    if not added:
+    if not added or _NEGATED_SUCCESS.search(added):
         return False
     return bool(_SUCCESS_TEXT.search(added)) or not _PROBLEM_TEXT.search(added)
 

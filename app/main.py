@@ -220,17 +220,35 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None, p
 
         if s.form.online:
             try:
-                msg = await submit_online(
-                    s.form,
-                    s.answers,
-                    browser_profile=request.app.state.browser_profile,
-                    page_values_reviewed=s.page_values_reviewed,
-                )
-            except PageHasValues as e:
-                # Nothing sent. Show what the page pre-filled (memory only) and ask for approval again.
-                s.apply(e.values, [])
-                s.page_values_reviewed = True
-                return {"session_id": s.id, "form": s.form.summary(), "stage": "review", "reply": str(e), **_review(s)}
+                try:
+                    msg = await submit_online(
+                        s.form,
+                        s.answers,
+                        browser_profile=request.app.state.browser_profile,
+                        page_values_reviewed=s.page_values_reviewed,
+                    )
+                except PageHasValues as e:
+                    # Nothing sent. Show what the page pre-filled (memory only) and ask for approval again.
+                    s.page_values_reviewed = True
+                    rejected = set(s.apply(e.values, []))
+                    if rejected != set(e.values):
+                        reply = str(e)
+                        if rejected:
+                            labels = ", ".join(s.form.field(r).label for r in rejected)
+                            reply += (
+                                f" These didn't fit the form and will be left empty unless you fill them: {labels}."
+                            )
+                        return {
+                            "session_id": s.id,
+                            "form": s.form.summary(),
+                            "stage": "review",
+                            "reply": reply,
+                            **_review(s),
+                        }
+                    # Nothing usable to show: submit exactly what was approved.
+                    msg = await submit_online(
+                        s.form, s.answers, browser_profile=request.app.state.browser_profile, page_values_reviewed=True
+                    )
             except SubmitError as e:
                 raise HTTPException(502, str(e)) from e
             request.app.state.sessions.drop(s.id)

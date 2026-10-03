@@ -145,3 +145,28 @@ def test_page_prefilled_values_return_to_review_then_submit(tmp_path, monkeypatc
 
 
 URL_AS = "https://script.google.com/macros/s/ABC/exec"
+
+
+def test_page_values_that_dont_fit_are_not_bounced_back(tmp_path, monkeypatch):
+    import app.main as main_module
+    from app.models import FormField, FormSchema, SourceKind
+    from app.submit import PageHasValues
+
+    calls = []
+
+    async def fake_submit(form, answers, browser_profile=None, *, page_values_reviewed=False):
+        calls.append(page_values_reviewed)
+        if not page_values_reviewed:
+            raise PageHasValues({"days": "lots"})  # not a number: can't be shown as an answer
+        return "Submitted."
+
+    monkeypatch.setattr(main_module, "submit_online", fake_submit)
+    app = create_app(model=fake_model(handler), data_dir=tmp_path)
+    fields = [FormField(id="name", label="Name"), FormField(id="days", label="Days", type="number")]
+    app.state.kb.save(FormSchema(id="s1", title="Leave", kind=SourceKind.APPS_SCRIPT, source=URL_AS, fields=fields))
+    client = TestClient(app)
+    sid = client.post("/api/chat", json={"message": "leave"}).json()["session_id"]
+    client.put(f"/api/chat/{sid}/answers", json={"answers": {"name": "Ana"}})
+
+    assert client.post(f"/api/chat/{sid}/submit").json()["stage"] == "done"
+    assert calls == [False, True]
