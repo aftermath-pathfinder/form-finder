@@ -71,6 +71,16 @@ async def _playwright() -> AsyncIterator[Playwright]:
         await pw.stop()
 
 
+def _plain(e: Exception) -> str:
+    """A Playwright failure in words a user can act on."""
+    msg = str(e)
+    if "Timeout" in msg:
+        return "The page took too long to respond. Try again in a moment, or open the form yourself."
+    if "net::" in msg:
+        return "Couldn't reach the form's website. Check your internet connection and try again."
+    return "The browser couldn't finish on that page. Try again, or open the form yourself."
+
+
 def _launch_error(e: Exception) -> BrowserError:
     msg = str(e)
     if "Executable doesn't exist" in msg:
@@ -90,6 +100,8 @@ async def _saved_login(pw: Playwright, profile: Path) -> dict[str, Any] | None:
         raise _launch_error(e) from e
     try:
         return await ctx.storage_state()
+    except Exception as e:
+        raise BrowserError("Couldn't read the saved Google sign-in. Sign in to Google again and retry.") from e
     finally:
         await ctx.close()
 
@@ -113,7 +125,7 @@ async def browser_context(profile: Path | None = None) -> AsyncIterator[BrowserC
             try:
                 yield context
             except PlaywrightError as e:
-                raise BrowserError(f"The browser couldn't finish: {_short(e)}. Try again in a moment.") from e
+                raise BrowserError(_plain(e)) from e
             finally:
                 await context.close()
         finally:
@@ -203,7 +215,10 @@ async def login_interactive(profile: Path | None = None, timeout_s: float = 300)
         signed_in = False
         try:
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-            await page.goto(LOGIN_URL)
+            try:
+                await page.goto(LOGIN_URL)
+            except Exception as e:
+                raise BrowserError("Couldn't open Google's sign-in page. Check your internet connection.") from e
             loop = asyncio.get_running_loop()
             deadline = loop.time() + timeout_s
             while not closed.is_set() and loop.time() < deadline:

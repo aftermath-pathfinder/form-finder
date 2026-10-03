@@ -48,7 +48,6 @@ $("#forms").addEventListener("click", async (e) => {
   if (id && confirm("Remove this form from the knowledge base?")) {
     await api(`/api/forms/${id}`, { method: "DELETE" });
     loadForms();
-checkBrowser();
   }
 });
 
@@ -61,7 +60,6 @@ $("#add-url").addEventListener("submit", async (e) => {
     kbStatus(`Added "${f.title}" (${f.field_count} fields).`);
     e.target.reset();
     loadForms();
-checkBrowser();
   } catch (err) { kbStatus(err.message, true); }
 });
 
@@ -75,7 +73,6 @@ $("#add-file").addEventListener("change", async (e) => {
     const f = await api("/api/forms/upload", { method: "POST", body }).then((r) => r.json());
     kbStatus(`Added "${f.title}" (${f.field_count} fields).`);
     loadForms();
-checkBrowser();
   } catch (err) { kbStatus(err.message, true); }
   e.target.value = "";
 });
@@ -89,8 +86,10 @@ function loginStatus(text, error = false) {
 
 async function checkBrowser() {
   try {
-    const { installed } = await api("/api/browser/status").then((r) => r.json());
-    if (!installed) loginStatus("Browser add-on not installed (needed for Apps Script and sign-in forms). See README.");
+    const { installed, hosted } = await api("/api/browser/status").then((r) => r.json());
+    // Hosted: sign-in would open a window on the server, so hide it; prefilled links cover sign-in forms.
+    if (hosted) $("#google-login").closest("section").hidden = true;
+    else if (!installed) loginStatus("Browser add-on not installed (needed for Apps Script and sign-in forms). See README.");
   } catch {}
 }
 

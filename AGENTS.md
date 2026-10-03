@@ -35,7 +35,8 @@ ruff check app tests && ruff format app tests # lint + format; must pass before 
 ## Hard rules
 
 - **Never persist or log the user's answers.** They live in `Session` (memory) and are dropped
-  after submit. Only blank templates go to `data/`.
+  after submit. Only blank templates go to `data/`, plus the Google login cookies in
+  `data/browser-profile/` (never answers: forms are filled in a throwaway browser context).
 - **Never submit without the review step.** `POST /api/chat/{id}/submit` is the user's approval.
 - **Tests never hit the network or a real AI.** Use `fake_model()` from `tests/helpers.py`
   (a Pydantic AI `FunctionModel`).

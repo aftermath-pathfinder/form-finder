@@ -140,3 +140,48 @@ def test_apps_script_submit_without_a_button_sends_nothing():
         return json.dumps(await page.frame(url=USER_HTML).evaluate("window.__submitted ?? null"))
 
     assert run({**APP, USER_HTML: no_button}, go) == "null"
+
+
+def submit_with(form_html: str, answers: dict):
+    """Ingest + submit against `form_html`; returns (message or SubmitError, what the page recorded)."""
+
+    async def go(page: Page):
+        form = await read_apps_script(page, URL, "a1")
+        try:
+            msg = await submit_apps_script_page(page, form, answers)
+        except SubmitError as e:
+            msg = e
+        return msg, await page.frame(url=USER_HTML).evaluate("window.__submitted ?? null")
+
+    return run({**APP, USER_HTML: form_html}, go)
+
+
+def test_apps_script_submit_only_sends_what_the_user_approved():
+    # The page pre-ticks "Manager", pre-selects "Morning" and pre-fills notes; the user chose none of them.
+    preset = (
+        FORM.replace('value="mgr">', 'value="mgr" checked>')
+        .replace('value="am">', 'value="am" checked>')
+        .replace('<textarea name="notes"></textarea>', '<textarea name="notes">Subscribe me</textarea>')
+    )
+    msg, submitted = submit_with(preset, {"fullName": "Ana", "notify": ["HR"]})
+    assert msg == "Submitted."
+    assert submitted["notify"] == ["hr"] and submitted["half"] is None and submitted["notes"] == ""
+
+
+def test_apps_script_submit_refuses_when_the_page_says_a_field_is_invalid():
+    # Full name is required on the page; the user left it empty.
+    msg, submitted = submit_with(FORM, {"notes": "hi"})
+    assert isinstance(msg, SubmitError) and "Full name" in str(msg) and "Nothing was sent" in str(msg)
+    assert submitted is None
+
+
+def test_apps_script_submit_does_not_claim_success_without_a_reaction():
+    silent = FORM.replace('document.getElementById("done").textContent = "Thanks!";', "")
+    msg, submitted = submit_with(silent, {"fullName": "Ana"})
+    assert submitted is not None and "didn't show any confirmation" in msg
+
+
+def test_apps_script_submit_handles_hidden_custom_radios():
+    hidden = FORM.replace('type="radio"', 'type="radio" style="display:none"')
+    msg, submitted = submit_with(hidden, {"fullName": "Ana", "half": "Afternoon"})
+    assert msg == "Submitted." and submitted["half"] == "pm"

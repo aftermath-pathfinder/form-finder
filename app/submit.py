@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 
 from . import browser
 from .ingest import BROWSER_HEADERS
-from .ingest.apps_script_form import SIGN_IN_FIRST
+from .ingest.apps_script_form import SIGN_IN_TO_SUBMIT
 from .ingest.html_form import css_attr, hidden_inputs, pick_form
 from .models import FormSchema, SourceKind
 
@@ -20,7 +20,8 @@ if TYPE_CHECKING:
     from playwright.async_api import Frame, Locator, Page
 
 _FIELD_TIMEOUT_MS = 5_000
-_SUBMIT_TEXT = re.compile(r"submit|send", re.I)
+# Button labels that mean "send this form" (not "send me a copy" or "resend code").
+_SUBMIT_TEXT = re.compile(r"^\W*(submit|send)\b(?!.*\b(copy|code|again|me)\b)", re.I)
 
 
 class SubmitError(RuntimeError):
@@ -81,27 +82,50 @@ def html_form_payload(form: FormSchema, answers: dict[str, Any], hidden: dict[st
 # ---- browser: Apps Script ------------------------------------------------
 
 
+# Sets a checkbox/radio directly: works for visually hidden custom controls, and can clear radios.
+_SET_CHECKED_JS = """(el, on) => {
+  if (el.checked === on) return;
+  el.checked = on;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}"""
+_CLEAR_SELECT_JS = """el => { el.value = ""; el.dispatchEvent(new Event("change", { bubbles: true })); }"""
+# Ids (or names) of controls the browser itself considers invalid (required but empty, bad format, ...).
+_INVALID_JS = """() => [...document.querySelectorAll("input, select, textarea")]
+  .filter(e => e.type !== "hidden" && !e.disabled && !e.checkValidity())
+  .map(e => e.name || e.id)"""
+_PAGE_TEXT_JS = "() => document.body ? document.body.innerText : ''"
+
+
 async def fill_frame(frame: Frame, form: FormSchema, answers: dict[str, Any]) -> None:
-    """Type/select/tick each answered field, located the way the ingester recorded it."""
+    """Make every field on the page match the reviewed answers exactly.
+
+    Fields the user left empty are cleared and options they didn't pick are unticked, so nothing
+    the page pre-filled (a ticked "subscribe" box, a default choice) is sent without their approval.
+    """
     from playwright.async_api import Error as PlaywrightError
 
     selectors: dict[str, str] = form.submit.get("selectors", {})
     option_selectors: dict[str, dict[str, str]] = form.submit.get("option_selectors", {})
     for f in form.fields:
         v = answers.get(f.id)
-        if v is None or v is False:
-            continue
-        values = [str(x) for x in (v if isinstance(v, list) else [v])]
+        values = [] if v is None or v is False else [str(x) for x in (v if isinstance(v, list) else [v])]
         field = frame.locator(selectors.get(f.id) or css_attr("name", f.id)).first
         try:
-            if f.type in ("choice", "checkbox") and f.id in option_selectors:
-                for text in values:
-                    sel = option_selectors[f.id].get(text)
-                    if sel is None:
-                        raise SubmitError(f"“{text}” isn't an option for “{f.label}” any more. Edit it and retry.")
-                    await frame.locator(sel).first.check(timeout=_FIELD_TIMEOUT_MS)
+            if f.id in option_selectors:
+                options = option_selectors[f.id]
+                if any(text not in options for text in values):
+                    raise SubmitError(
+                        f"An answer for “{f.label}” no longer matches the form's options, so nothing was sent. "
+                        "Edit it and approve again."
+                    )
+                for text, sel in options.items():
+                    await frame.locator(sel).first.evaluate(_SET_CHECKED_JS, text in values)
             elif f.type == "dropdown":
-                await field.select_option(label=values, timeout=_FIELD_TIMEOUT_MS)
+                if values:
+                    await field.select_option(label=values, timeout=_FIELD_TIMEOUT_MS)
+                else:
+                    await field.evaluate(_CLEAR_SELECT_JS)
             else:
                 await field.fill(", ".join(values), timeout=_FIELD_TIMEOUT_MS)
         except PlaywrightError as e:
@@ -111,23 +135,40 @@ async def fill_frame(frame: Frame, form: FormSchema, answers: dict[str, Any]) ->
             ) from e
 
 
-async def find_submit_button(frame: Frame) -> Locator | None:
-    candidates = (
-        frame.locator("button[type=submit], input[type=submit]"),
-        frame.get_by_role("button", name=_SUBMIT_TEXT),
-    )
-    for loc in candidates:
-        visible = loc.filter(visible=True)
-        if await visible.count():
-            return visible.first
+async def find_submit_button(frame: Frame, near: str | None = None) -> Locator | None:
+    """The visible submit control, preferring one inside the same <form> as the field `near`."""
+    scopes = []
+    if near:
+        scopes.append(frame.locator("form").filter(has=frame.locator(near)).first)
+    scopes.append(frame.locator(":root"))
+    for scope in scopes:
+        for loc in (
+            scope.locator("button[type=submit], input[type=submit]"),
+            scope.get_by_role("button", name=_SUBMIT_TEXT),
+        ):
+            visible = loc.filter(visible=True)
+            if await visible.count():
+                return visible.first
     return None
 
 
+async def _page_state(page: Page, frame: Frame) -> tuple[str, str | None]:
+    """Page URL and the form frame's visible text (None once the frame is gone)."""
+    from playwright.async_api import Error as PlaywrightError
+
+    if frame.is_detached():
+        return page.url, None
+    try:
+        return page.url, await frame.evaluate(_PAGE_TEXT_JS)
+    except PlaywrightError:  # navigated away mid-read
+        return page.url, None
+
+
 async def submit_apps_script_page(page: Page, form: FormSchema, answers: dict[str, Any]) -> str:
-    """Open the form in `page`, fill it, click its submit control and wait for the page to settle."""
+    """Open the form in `page`, fill it, check the page accepts it, click submit, and look for a reaction."""
     await browser.goto(page, form.source)
     if browser.on_login_page(page.url):
-        raise SubmitError(SIGN_IN_FIRST.replace("add the link again", "approve again"))
+        raise SubmitError(SIGN_IN_TO_SUBMIT)
     frame = await browser.find_form_frame(page)
     if frame is None:
         raise SubmitError(
@@ -135,13 +176,29 @@ async def submit_apps_script_page(page: Page, form: FormSchema, answers: dict[st
             "opens in your browser."
         )
     await fill_frame(frame, form, answers)
-    button = await find_submit_button(frame)
+
+    invalid = await frame.evaluate(_INVALID_JS)
+    if invalid:
+        labels = ", ".join(dict.fromkeys(f.label if (f := form.field(i)) else i for i in invalid))
+        raise SubmitError(
+            f"The form says these are missing or invalid: {labels}. Nothing was sent; fix them on the review "
+            "screen and approve again."
+        )
+
+    first = next(iter(form.submit.get("selectors", {}).values()), None)
+    button = await find_submit_button(frame, near=first)
     if button is None:
         raise SubmitError(
             "Couldn't find the form's Submit button, so nothing was sent. Open the form yourself and submit it there."
         )
-    await button.click()
+    before = await _page_state(page, frame)
+    await button.click(timeout=_FIELD_TIMEOUT_MS)
     await browser.settle(page)
+    if await _page_state(page, frame) == before:
+        return (
+            "I clicked Submit, but the page didn't show any confirmation. Open the form in your browser to check "
+            "it went through."
+        )
     return "Submitted."
 
 
@@ -165,7 +222,9 @@ async def post_signed_in_google_form(request: _Poster, form: FormSchema, answers
             "then approve again."
         )
     if resp.status >= 400:
-        raise SubmitError(f"The form rejected the submission (HTTP {resp.status}).")
+        raise SubmitError(
+            f"The form rejected the submission (HTTP {resp.status}). Open the form yourself and submit it there."
+        )
     return "Submitted."
 
 

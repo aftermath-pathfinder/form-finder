@@ -27,6 +27,13 @@
 The session (with your answers) is dropped as soon as one of these delivery paths completes.
 With `APP_PASSWORD` set, `auth.PasswordMiddleware` guards every route.
 
+Apps Script submits are checked before and after clicking: everything on the page is set to exactly
+the reviewed answers (pre-ticked boxes unticked, untouched fields cleared), the page's own
+validation must pass, and success is only claimed if the page visibly reacts.
+
+On disk, `data/` holds blank templates, parsed schemas and (browser add-on) the Google login in
+`data/browser-profile/`. Delete that folder to sign out.
+
 Adding a form is separate: `ingest/` reads the source into a `FormSchema`, then
 `ai.enrich_form` writes a one-line purpose (for matching) and a friendly question per field.
 

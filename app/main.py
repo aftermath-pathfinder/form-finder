@@ -126,14 +126,17 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None, p
     # ---- browser add-on (Apps Script, sign-in Google Forms) ---------------
 
     @app.get("/api/browser/status")
-    def browser_status():
-        return {"installed": browser.playwright_installed()}
+    def browser_status(request: Request):
+        return {"installed": browser.playwright_installed(), "hosted": request.app.state.hosted}
 
     @app.post("/api/browser/login")
     async def browser_login(request: Request):
         """Open a visible browser on this computer so the user can sign in to Google once."""
+        # Other websites can't send a JSON POST here without a CORS preflight, which this app never allows.
+        if not request.headers.get("content-type", "").startswith("application/json"):
+            raise HTTPException(415, "Use the Sign in to Google button in Form Finder.")
         host = request.client.host if request.client else ""
-        if request.app.state.hosted or host not in ("127.0.0.1", "::1", "localhost"):
+        if request.app.state.hosted or host not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
             raise HTTPException(400, "Sign-in opens a window on the computer running Form Finder, so use it there.")
         try:
             signed_in = await browser.login_interactive(request.app.state.browser_profile)

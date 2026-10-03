@@ -16,10 +16,12 @@ from .html_form import parse_html_form
 if TYPE_CHECKING:
     from playwright.async_api import Page
 
-SIGN_IN_FIRST = (
-    "This form needs a Google sign-in. Click “Sign in to Google” in the left panel, sign in, close that "
-    "window, then add the link again."
+_SIGN_IN = (
+    "This form needs a Google sign-in. If Form Finder runs on your own computer, click “Sign in to Google” "
+    "in the left panel, sign in, close that window, then {retry}. Otherwise, open the form in your own browser."
 )
+SIGN_IN_FIRST = _SIGN_IN.format(retry="add the link again")
+SIGN_IN_TO_SUBMIT = _SIGN_IN.format(retry="approve again")
 
 
 def is_apps_script(url: str) -> bool:

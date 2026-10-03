@@ -86,8 +86,9 @@ def test_bad_upload(tmp_path):
 
 def test_browser_login_only_from_this_computer(tmp_path):
     client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path))
-    assert set(client.get("/api/browser/status").json()) == {"installed"}
-    r = client.post("/api/browser/login")  # TestClient isn't a loopback address
+    assert set(client.get("/api/browser/status").json()) == {"installed", "hosted"}
+    assert client.post("/api/browser/login").status_code == 415  # plain cross-site POSTs are refused
+    r = client.post("/api/browser/login", json={})  # TestClient isn't a loopback address
     assert r.status_code == 400 and "computer running Form Finder" in r.json()["detail"]
 
 
@@ -109,5 +110,6 @@ def test_password_protects_everything_and_disables_sign_in(tmp_path):
     client = TestClient(create_app(model=fake_model(handler), data_dir=tmp_path, password="pw"))
     assert client.get("/api/forms").status_code == 401
     assert client.get("/", auth=("me", "pw")).status_code == 200
-    r = client.post("/api/browser/login", auth=("me", "pw"))
+    assert client.get("/api/browser/status", auth=("me", "pw")).json()["hosted"] is True
+    r = client.post("/api/browser/login", json={}, auth=("me", "pw"))
     assert r.status_code == 400 and "computer running Form Finder" in r.json()["detail"]
