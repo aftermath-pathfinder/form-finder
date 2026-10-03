@@ -136,7 +136,8 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None, p
         if not request.headers.get("content-type", "").startswith("application/json"):
             raise HTTPException(415, "Use the Sign in to Google button in Form Finder.")
         host = request.client.host if request.client else ""
-        if request.app.state.hosted or host not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+        local_name = request.url.hostname in ("localhost", "127.0.0.1", "::1")  # blocks DNS rebinding
+        if request.app.state.hosted or not local_name or host not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
             raise HTTPException(400, "Sign-in opens a window on the computer running Form Finder, so use it there.")
         try:
             signed_in = await browser.login_interactive(request.app.state.browser_profile)

@@ -27,9 +27,13 @@
 The session (with your answers) is dropped as soon as one of these delivery paths completes.
 With `APP_PASSWORD` set, `auth.PasswordMiddleware` guards every route.
 
-Apps Script submits are checked before and after clicking: everything on the page is set to exactly
-the reviewed answers (pre-ticked boxes unticked, untouched fields cleared), the page's own
-validation must pass, and success is only claimed if the page visibly reacts.
+Whatever a web page pre-fills (text, a pre-selected option, pre-ticked boxes) becomes the starting
+answer (`FormField.default`), so it shows on the review screen and isn't asked again.
+
+Apps Script submits are checked before and after clicking: the page is set to exactly the reviewed
+answers (anything cleared or unticked on review is cleared or unticked; read-only fields are left
+alone), the page's own validation for that form must pass, and success is only claimed if the page
+shows new, non-error text or moves on. Anything less raises `SubmitError` and keeps the session.
 
 On disk, `data/` holds blank templates, parsed schemas and (browser add-on) the Google login in
 `data/browser-profile/`. Delete that folder to sign out.

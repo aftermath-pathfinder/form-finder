@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 from app.ingest.apps_script_form import read_apps_script
+from app.interview import Session
 from app.submit import SubmitError, submit_apps_script_page
 
 pytest.importorskip("playwright")
@@ -178,7 +179,52 @@ def test_apps_script_submit_refuses_when_the_page_says_a_field_is_invalid():
 def test_apps_script_submit_does_not_claim_success_without_a_reaction():
     silent = FORM.replace('document.getElementById("done").textContent = "Thanks!";', "")
     msg, submitted = submit_with(silent, {"fullName": "Ana"})
-    assert submitted is not None and "didn't show any confirmation" in msg
+    assert isinstance(msg, SubmitError) and "didn't confirm" in str(msg)  # answers kept for another try
+
+
+def test_apps_script_submit_treats_an_error_message_as_failure():
+    failing = FORM.replace('textContent = "Thanks!"', 'textContent = "Error: quota exceeded"')
+    msg, _ = submit_with(failing, {"fullName": "Ana"})
+    assert isinstance(msg, SubmitError)
+
+
+def test_apps_script_leaves_hidden_and_readonly_fields_workable():
+    extra = (
+        '<input name="other" style="display:none">'  # conditional "Other: please specify" box
+        '<input name="ref" value="REF-7" readonly>'  # the page owns this one
+        '<button type="submit">'
+    )
+    page_html = FORM.replace('<button type="submit">', extra, 1).replace(
+        "notes: f.notes.value,", "notes: f.notes.value, other: f.other.value, ref: f.ref.value,"
+    )
+
+    async def go(page: Page):
+        form = await read_apps_script(page, URL, "a1")
+        assert "ref" not in {f.id for f in form.fields}  # readonly: not asked, not touched
+        msg = await submit_apps_script_page(page, form, {"fullName": "Ana"})  # "other" left empty
+        return msg, await page.frame(url=USER_HTML).evaluate("window.__submitted")
+
+    msg, submitted = run({**APP, USER_HTML: page_html}, go)
+    assert msg == "Submitted." and submitted["ref"] == "REF-7" and submitted["other"] == ""
+
+
+def test_apps_script_ignores_required_controls_outside_the_form():
+    with_search = FORM.replace("<body>", '<body><input type="search" name="q" required>', 1)
+    msg, submitted = submit_with(with_search, {"fullName": "Ana"})
+    assert msg == "Submitted." and submitted["fullName"] == "Ana"
+
+
+def test_apps_script_page_defaults_become_starting_answers():
+    preset = FORM.replace('value="mgr">', 'value="mgr" checked>').replace(
+        '<option value="s">Sick</option>', '<option value="s" selected>Sick</option>'
+    )
+
+    async def go(page: Page):
+        return await read_apps_script(page, URL, "a1")
+
+    form = run({**APP, USER_HTML: preset}, go)
+    session = Session(form=form)
+    assert session.answers["notify"] == ["Manager"] and session.answers["kind"] == "Sick"
 
 
 def test_apps_script_submit_handles_hidden_custom_radios():

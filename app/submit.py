@@ -82,26 +82,51 @@ def html_form_payload(form: FormSchema, answers: dict[str, Any], hidden: dict[st
 # ---- browser: Apps Script ------------------------------------------------
 
 
-# Sets a checkbox/radio directly: works for visually hidden custom controls, and can clear radios.
+# Fallback for controls a real click can't reach (visually hidden custom controls) and for
+# clearing radios, which can't be "unclicked".
 _SET_CHECKED_JS = """(el, on) => {
   if (el.checked === on) return;
   el.checked = on;
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }"""
-_CLEAR_SELECT_JS = """el => { el.value = ""; el.dispatchEvent(new Event("change", { bubbles: true })); }"""
-# Ids (or names) of controls the browser itself considers invalid (required but empty, bad format, ...).
-_INVALID_JS = """() => [...document.querySelectorAll("input, select, textarea")]
-  .filter(e => e.type !== "hidden" && !e.disabled && !e.checkValidity())
-  .map(e => e.name || e.id)"""
+# Sets a text/select value without needing the control to be visible or editable.
+_SET_VALUE_JS = """(el, v) => {
+  if (el.value === v) return;
+  el.value = v;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}"""
+# Controls the browser itself considers invalid, limited to the form being submitted (the <form>
+# around our fields, or just our fields when the page has no <form>).
+_INVALID_JS = """(sels) => {
+  const ours = sels.map((s) => document.querySelector(s)).filter(Boolean);
+  const form = ours.length ? ours[0].closest("form") : null;
+  const controls = form ? [...form.elements] : ours;
+  return controls.filter((e) => e.willValidate && !e.checkValidity()).map((e) => e.name || e.id || "");
+}"""
 _PAGE_TEXT_JS = "() => document.body ? document.body.innerText : ''"
+_PROBLEM_TEXT = re.compile(r"\b(error|invalid|failed|try again|required)\b", re.I)
+
+
+async def _set_checked(box: Locator, on: bool) -> None:
+    from playwright.async_api import Error as PlaywrightError
+
+    is_radio = await box.evaluate("el => el.type === 'radio'")
+    if await box.is_visible() and (on or not is_radio):
+        try:
+            await box.set_checked(on, timeout=_FIELD_TIMEOUT_MS)  # a real click, so page scripts react
+            return
+        except PlaywrightError:
+            pass
+    await box.evaluate(_SET_CHECKED_JS, on)
 
 
 async def fill_frame(frame: Frame, form: FormSchema, answers: dict[str, Any]) -> None:
     """Make every field on the page match the reviewed answers exactly.
 
-    Fields the user left empty are cleared and options they didn't pick are unticked, so nothing
-    the page pre-filled (a ticked "subscribe" box, a default choice) is sent without their approval.
+    The review screen started from what the page pre-filled, so anything the user cleared or
+    unticked there is cleared or unticked here too; nothing is sent that they didn't see.
     """
     from playwright.async_api import Error as PlaywrightError
 
@@ -120,18 +145,19 @@ async def fill_frame(frame: Frame, form: FormSchema, answers: dict[str, Any]) ->
                         "Edit it and approve again."
                     )
                 for text, sel in options.items():
-                    await frame.locator(sel).first.evaluate(_SET_CHECKED_JS, text in values)
-            elif f.type == "dropdown":
-                if values:
-                    await field.select_option(label=values, timeout=_FIELD_TIMEOUT_MS)
-                else:
-                    await field.evaluate(_CLEAR_SELECT_JS)
-            else:
+                    await _set_checked(frame.locator(sel).first, text in values)
+            elif f.type == "dropdown" and values:
+                await field.select_option(label=values, timeout=_FIELD_TIMEOUT_MS)
+            elif not values:
+                await field.evaluate(_SET_VALUE_JS, "")  # clearing never needs the field to be visible
+            elif await field.is_visible() and await field.is_editable():
                 await field.fill(", ".join(values), timeout=_FIELD_TIMEOUT_MS)
+            else:
+                await field.evaluate(_SET_VALUE_JS, ", ".join(values))
         except PlaywrightError as e:
             raise SubmitError(
-                f"Couldn't fill “{f.label}” on the page, so nothing was sent. The form may have changed; "
-                "remove it from the knowledge base and add the link again."
+                f"Couldn't fill “{f.label}” on the page, so nothing was sent. "
+                "Open the form yourself and submit it there."
             ) from e
 
 
@@ -164,8 +190,21 @@ async def _page_state(page: Page, frame: Frame) -> tuple[str, str | None]:
         return page.url, None
 
 
+def _confirmed(before: tuple[str, str | None], after: tuple[str, str | None]) -> bool:
+    """Did the page react like a successful submit? New page, or new text that isn't an error."""
+    if after[0] != before[0] or after[1] is None:
+        return True
+    old = set((before[1] or "").splitlines())
+    added = [line for line in after[1].splitlines() if line.strip() and line not in old]
+    return bool(added) and not any(_PROBLEM_TEXT.search(line) for line in added)
+
+
 async def submit_apps_script_page(page: Page, form: FormSchema, answers: dict[str, Any]) -> str:
-    """Open the form in `page`, fill it, check the page accepts it, click submit, and look for a reaction."""
+    """Open the form in `page`, fill it, check the page accepts it, click submit, and confirm a reaction.
+
+    Anything short of a clear success raises `SubmitError`, so the session (and the user's answers)
+    is kept for another try.
+    """
     await browser.goto(page, form.source)
     if browser.on_login_page(page.url):
         raise SubmitError(SIGN_IN_TO_SUBMIT)
@@ -177,16 +216,21 @@ async def submit_apps_script_page(page: Page, form: FormSchema, answers: dict[st
         )
     await fill_frame(frame, form, answers)
 
-    invalid = await frame.evaluate(_INVALID_JS)
+    ours = list(form.submit.get("selectors", {}).values())
+    invalid = await frame.evaluate(_INVALID_JS, ours)
     if invalid:
-        labels = ", ".join(dict.fromkeys(f.label if (f := form.field(i)) else i for i in invalid))
+        known = [f.label for i in dict.fromkeys(invalid) if (f := form.field(i))]
+        if len(known) == len(set(invalid)):
+            raise SubmitError(
+                f"The form says these are missing or invalid: {', '.join(known)}. Nothing was sent; fix them on "
+                "the review screen and approve again."
+            )
         raise SubmitError(
-            f"The form says these are missing or invalid: {labels}. Nothing was sent; fix them on the review "
-            "screen and approve again."
+            "The form wants something I can't fill from here, so nothing was sent. Open the form yourself and "
+            "submit it there."
         )
 
-    first = next(iter(form.submit.get("selectors", {}).values()), None)
-    button = await find_submit_button(frame, near=first)
+    button = await find_submit_button(frame, near=ours[0] if ours else None)
     if button is None:
         raise SubmitError(
             "Couldn't find the form's Submit button, so nothing was sent. Open the form yourself and submit it there."
@@ -194,10 +238,10 @@ async def submit_apps_script_page(page: Page, form: FormSchema, answers: dict[st
     before = await _page_state(page, frame)
     await button.click(timeout=_FIELD_TIMEOUT_MS)
     await browser.settle(page)
-    if await _page_state(page, frame) == before:
-        return (
-            "I clicked Submit, but the page didn't show any confirmation. Open the form in your browser to check "
-            "it went through."
+    if not _confirmed(before, await _page_state(page, frame)):
+        raise SubmitError(
+            "I clicked Submit, but the page didn't confirm it went through. Check the form in your browser "
+            "before trying again; your answers are still here."
         )
     return "Submitted."
 
