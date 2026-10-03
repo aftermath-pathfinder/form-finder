@@ -27,6 +27,7 @@ button, .upload span {
   background: var(--accent); color: var(--accent-text); font: inherit; cursor: pointer;
 }
 button:disabled { opacity: .5; cursor: default; }
+.secondary { margin-left: 8px; background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 .upload span { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 .status { color: var(--muted); font-size: 13px; min-height: 1.5em; }
 .status.error, .error { color: var(--warn); }

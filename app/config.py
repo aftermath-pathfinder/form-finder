@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "z-ai/glm-5.3"
     llm_fallback_models: str = ""
+    # Ask OpenAI-compatible APIs for JSON-only replies. Turn off if the provider rejects
+    # `response_format` (replies are still parsed and validated as JSON either way).
+    llm_json_mode: bool = True
 
     # Form templates + their parsed schemas live here. Your answers never do.
     data_dir: Path = Path("data")

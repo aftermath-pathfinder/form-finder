@@ -117,8 +117,23 @@ function renderReview(turn) {
         <label>${esc(f.label)}${f.required ? ' <span class="req">*</span>' : ""}</label>${inputFor(f)}</div>`).join("")}
       <p class="error"></p>
       <button>${verb}</button>
+      ${turn.prefill ? '<button type="button" class="secondary" data-prefill>Open prefilled in my browser</button>' : ""}
     </form>`);
   const form = box.querySelector("form");
+  // For Google Forms that need sign-in: open a prefilled copy and submit it yourself.
+  form.querySelector("[data-prefill]")?.addEventListener("click", async () => {
+    const err = form.querySelector(".error");
+    const win = window.open("", "_blank"); // open now, before awaits, so popup blockers allow it
+    try {
+      await json(`/api/chat/${sessionId}/answers`, "PUT", { answers: Object.fromEntries(new FormData(form)) });
+      const { url } = await json(`/api/chat/${sessionId}/prefill`, "GET");
+      if (win) win.location = url;
+      else window.location = url;
+    } catch (ex) {
+      win?.close();
+      err.textContent = ex.message;
+    }
+  });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = form.querySelector("button");

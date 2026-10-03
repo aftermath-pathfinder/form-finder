@@ -16,7 +16,7 @@ from .interview import Session, SessionStore
 from .knowledge_base import KnowledgeBase
 from .llm import build_model
 from .models import FormField, SourceKind
-from .submit import SubmitError, submit_online
+from .submit import SubmitError, google_prefill_url, submit_online
 
 STATIC = Path(__file__).parent / "static"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -52,6 +52,7 @@ def _review(s: Session) -> dict[str, Any]:
         "fields": [{**_question(f), "label": f.label, "value": s.answers.get(f.id)} for f in s.form.fields],
         "missing_required": [f.id for f in s.missing_required()],
         "action": "submit" if s.form.online else "download",
+        "prefill": s.form.kind == SourceKind.GOOGLE_FORM,
     }
 
 
@@ -165,6 +166,14 @@ def create_app(model: Model | str | None = None, data_dir: Path | None = None) -
                 s.answers.pop(fid, None)
         rejected = s.apply({k: v for k, v in body.answers.items() if v not in (None, "", [])}, [])
         return {"session_id": s.id, "form": s.form.summary(), "stage": "review", "rejected": rejected, **_review(s)}
+
+    @app.get("/api/chat/{sid}/prefill")
+    def prefill(request: Request, sid: str):
+        """Google Forms only: a prefilled link the user opens and submits in their own browser."""
+        s = session(request, sid)
+        if s.form.kind != SourceKind.GOOGLE_FORM:
+            raise HTTPException(400, "Prefilled links only work for Google Forms.")
+        return {"url": google_prefill_url(s.form, s.answers)}
 
     @app.post("/api/chat/{sid}/submit")
     async def submit(request: Request, sid: str):

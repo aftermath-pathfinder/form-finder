@@ -54,6 +54,10 @@ def test_build_model_from_settings(monkeypatch):
     nvidia = build_model(Settings(_env_file=None, llm_api_key="k", llm_model="z-ai/glm-5.3"))
     assert nvidia.model_name == "z-ai/glm-5.3" and "integrate.api.nvidia.com" in nvidia.base_url
 
+    plain = build_model(Settings(_env_file=None, llm_api_key="k", llm_json_mode=False))
+    assert nvidia.profile.get("supports_json_object_output") is True
+    assert plain.profile.get("supports_json_object_output") is False
+
     other = build_model(Settings(_env_file=None, llm_provider="anthropic", llm_model="claude-sonnet-5-5"))
     assert other == "anthropic:claude-sonnet-5-5"
 

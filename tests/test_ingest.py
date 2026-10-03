@@ -8,7 +8,7 @@ from app.fill import fill_docx, fill_pdf
 from app.ingest import ingest_file
 from app.ingest.google_form import form_response_url, parse_google_form
 from app.ingest.html_form import parse_html_form
-from app.submit import google_form_payload, html_form_payload
+from app.submit import google_form_payload, google_prefill_url, html_form_payload
 from tests.helpers import make_docx, make_pdf
 
 
@@ -42,6 +42,9 @@ def test_google_form_parse_and_payload():
     payload = google_form_payload(form, {"entry.111": "Ana", "entry.222": "Sick", "entry.333": "2026-10-09"})
     assert ("entry.333_year", "2026") in payload and ("entry.333_day", "09") in payload
     assert ("pageHistory", "0,1") in payload
+
+    url = google_prefill_url(form, {"entry.111": "Ana Cruz", "entry.222": "Sick"})
+    assert url == ("https://docs.google.com/forms/d/e/ABC/viewform?usp=pp_url&entry.111=Ana+Cruz&entry.222=Sick")
 
 
 def test_form_response_url_variants():

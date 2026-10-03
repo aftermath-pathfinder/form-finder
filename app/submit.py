@@ -1,6 +1,7 @@
 """Submit answers to online forms."""
 
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from bs4 import BeautifulSoup
@@ -33,6 +34,22 @@ def google_form_payload(form: FormSchema, answers: dict[str, Any]) -> list[tuple
     pages = int(form.submit.get("pages", 1))
     data.append(("pageHistory", ",".join(str(i) for i in range(pages))))
     return data
+
+
+def google_prefill_url(form: FormSchema, answers: dict[str, Any]) -> str:
+    """A link that opens the Google Form with answers already filled in.
+
+    The user submits it themselves in their own browser, so it works for forms that need
+    Google sign-in without this app ever touching their account.
+    """
+    data: list[tuple[str, str]] = [("usp", "pp_url")]
+    for f in form.fields:
+        v = answers.get(f.id)
+        if v is None:
+            continue
+        data += [(f.id, str(x)) for x in v] if isinstance(v, list) else [(f.id, str(v))]
+    viewform = form.submit["action"].removesuffix("/formResponse") + "/viewform"
+    return f"{viewform}?{urlencode(data)}"
 
 
 def html_form_payload(form: FormSchema, answers: dict[str, Any], hidden: dict[str, str]) -> list[tuple[str, str]]:
